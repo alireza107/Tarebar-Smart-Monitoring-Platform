@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ORG_ADMIN
+  FIELD_MANAGER
+  MARKET_MANAGER
+}
+
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+enum ScopeType {
+  FIELD
+  MARKET
+}
+
+// ─── Auth.js required models ─────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Domain models ───────────────────────────────────────────────────────────
+
+model User {
+  id        String    @id @default(cuid())
+  username  String    @unique
+  name      String
+  email     String?   @unique
+  password  String?
+  role      Role      @default(MARKET_MANAGER)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accounts Account[]
+  sessions Session[]
+  scopes   UserScope[]
+}
+
+model UserScope {
+  id        String    @id @default(cuid())
+  userId    String
+  scopeType ScopeType
+  fieldId   String?
+  marketId  String?
+  createdAt DateTime  @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field  Field?  @relation(fields: [fieldId], references: [id])
+  market Market? @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, scopeType, fieldId, marketId])
+}
+
+model Field {
+  id        String    @id @default(cuid())
+  name      String
+  address   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  markets Market[]
+  cameras Camera[]
+  scopes  UserScope[]
+}
+
+model Market {
+  id        String    @id @default(cuid())
+  name      String
+  address   String?
+  fieldId   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  field   Field       @relation(fields: [fieldId], references: [id])
+  booths  Booth[]
+  cameras Camera[]
+  scopes  UserScope[]
+}
+
+model BoothCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  booths Booth[]
+}
+
+model Booth {
+  id         String    @id @default(cuid())
+  number     String
+  marketId   String
+  categoryId String
+  ownerId    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  market   Market        @relation(fields: [marketId], references: [id])
+  category BoothCategory @relation(fields: [categoryId], references: [id])
+  cameras  Camera[]
+
+  @@unique([marketId, number])
+}
+
+model Camera {
+  id        String       @id @default(cuid())
+  name      String
+  streamUrl String?
+  status    CameraStatus @default(UNKNOWN)
+  fieldId   String?
+  marketId  String?
+  boothId   String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
+
+  field  Field?  @relation(fields: [fieldId], references: [id])
+  market Market? @relation(fields: [marketId], references: [id])
+  booth  Booth?  @relation(fields: [boothId], references: [id])
+}

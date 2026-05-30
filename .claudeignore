@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+dist/
+build/
+
+# Prisma
+prisma/migrations/
+src/generated/
+
+# Package locks
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+*.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Compiled / minified
+*.min.js
+*.min.css
+*.map
+*.d.ts.map
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Docker
+docker-compose.override.yml
