@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table'
 import { CameraForm, type CameraFormValues } from './camera-form'
 import type { Camera } from '@/modules/camera/types'
+import { usePermissions } from '@/hooks/use-permissions'
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   ONLINE:  { label: 'آنلاین',   className: 'bg-green-100 text-green-700' },
@@ -87,6 +88,10 @@ export function CamerasClient() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Camera | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can('camera', 'create')
+  const canEdit = can('camera', 'update')
+  const canDelete = can('camera', 'delete')
 
   const { data: cameras = [], isLoading } = useQuery({
     queryKey: ['cameras'],
@@ -122,7 +127,9 @@ export function CamerasClient() {
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">دوربین‌ها</h1>
-        <Button onClick={() => { setCreateOpen(true); setMutationError(null) }}>+ افزودن دوربین</Button>
+        {canCreate && (
+          <Button onClick={() => { setCreateOpen(true); setMutationError(null) }}>+ افزودن دوربین</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -138,7 +145,9 @@ export function CamerasClient() {
               <TableHead>مکان</TableHead>
               <TableHead>آدرس استریم</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
-              <TableHead className="w-36">عملیات</TableHead>
+              {(canEdit || canDelete) && (
+                <TableHead className="w-36">عملیات</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -157,29 +166,35 @@ export function CamerasClient() {
                     {camera.streamUrl ?? '—'}
                   </TableCell>
                   <TableCell>{new Date(camera.createdAt).toLocaleDateString('fa-IR')}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setEditTarget(camera); setMutationError(null) }}
-                      >
-                        ویرایش
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          if (confirm('آیا از حذف این دوربین مطمئن هستید؟')) {
-                            deleteMutation.mutate(camera.id)
-                          }
-                        }}
-                      >
-                        حذف
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {(canEdit || canDelete) && (
+                    <TableCell>
+                      <div className="flex gap-2">
+                        {canEdit && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => { setEditTarget(camera); setMutationError(null) }}
+                          >
+                            ویرایش
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              if (confirm('آیا از حذف این دوربین مطمئن هستید؟')) {
+                                deleteMutation.mutate(camera.id)
+                              }
+                            }}
+                          >
+                            حذف
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               )
             })}
@@ -187,49 +202,55 @@ export function CamerasClient() {
         </Table>
       )}
 
-      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setMutationError(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>افزودن دوربین جدید</DialogTitle>
-          </DialogHeader>
-          {mutationError && createOpen && (
-            <p className="text-sm text-red-500">{mutationError}</p>
-          )}
-          <CameraForm
-            onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setCreateOpen(false)}
-            isPending={createMutation.isPending}
-            submitLabel="ایجاد"
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) { setEditTarget(null); setMutationError(null) } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ویرایش دوربین</DialogTitle>
-          </DialogHeader>
-          {mutationError && !!editTarget && (
-            <p className="text-sm text-red-500">{mutationError}</p>
-          )}
-          {editTarget && (
+      {/* Create dialog */}
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setMutationError(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>افزودن دوربین جدید</DialogTitle>
+            </DialogHeader>
+            {mutationError && createOpen && (
+              <p className="text-sm text-red-500">{mutationError}</p>
+            )}
             <CameraForm
-              defaultValues={{
-                name:      editTarget.name,
-                streamUrl: editTarget.streamUrl ?? '',
-                status:    editTarget.status,
-                fieldId:   editTarget.fieldId  ?? '',
-                marketId:  editTarget.marketId ?? '',
-                boothId:   editTarget.boothId  ?? '',
-              }}
-              onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-              onCancel={() => setEditTarget(null)}
-              isPending={updateMutation.isPending}
-              submitLabel="ذخیره تغییرات"
+              onSubmit={(data) => createMutation.mutate(data)}
+              onCancel={() => setCreateOpen(false)}
+              isPending={createMutation.isPending}
+              submitLabel="ایجاد"
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit dialog */}
+      {canEdit && (
+        <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) { setEditTarget(null); setMutationError(null) } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ویرایش دوربین</DialogTitle>
+            </DialogHeader>
+            {mutationError && !!editTarget && (
+              <p className="text-sm text-red-500">{mutationError}</p>
+            )}
+            {editTarget && (
+              <CameraForm
+                defaultValues={{
+                  name:      editTarget.name,
+                  streamUrl: editTarget.streamUrl ?? '',
+                  status:    editTarget.status,
+                  fieldId:   editTarget.fieldId  ?? '',
+                  marketId:  editTarget.marketId ?? '',
+                  boothId:   editTarget.boothId  ?? '',
+                }}
+                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
+                onCancel={() => setEditTarget(null)}
+                isPending={updateMutation.isPending}
+                submitLabel="ذخیره تغییرات"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

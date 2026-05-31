@@ -19,11 +19,19 @@ import {
 } from '@/components/ui/table'
 import { UserForm, type UserFormValues } from './user-form'
 import type { User } from '@/modules/user/types'
+import { usePermissions } from '@/hooks/use-permissions'
 
 const roleLabels: Record<string, string> = {
   ORG_ADMIN: 'مدیر سازمان',
   FIELD_MANAGER: 'مدیر میدان',
   MARKET_MANAGER: 'مدیر بازار',
+}
+
+function scopeLabel(user: User): string {
+  if (user.scopes.length === 0) return 'کل سازمان'
+  const scope = user.scopes[0]
+  if (scope.scopeType === 'FIELD') return `میدان: ${scope.field?.name ?? '—'}`
+  return `بازار: ${scope.market?.name ?? '—'}`
 }
 
 async function fetchUsers(): Promise<User[]> {
@@ -38,6 +46,8 @@ async function createUser(data: UserFormValues): Promise<User> {
     ...data,
     email: data.email || undefined,
     password: data.password || '',
+    fieldId: data.fieldId || undefined,
+    marketId: data.marketId || undefined,
   }
   const res = await fetch('/api/users', {
     method: 'POST',
@@ -58,6 +68,8 @@ async function updateUser(id: string, data: UserFormValues): Promise<User> {
     email: data.email || undefined,
     role: data.role,
     isActive: data.isActive,
+    fieldId: data.fieldId || undefined,
+    marketId: data.marketId || undefined,
   }
   if (data.password) payload.password = data.password
   const res = await fetch(`/api/users/${id}`, {
@@ -80,6 +92,10 @@ export function UsersClient() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can('user', 'create')
+  const canEdit = can('user', 'update')
+  const canDelete = can('user', 'delete')
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -115,7 +131,9 @@ export function UsersClient() {
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">کاربران</h1>
-        <Button onClick={() => { setCreateOpen(true); setMutationError(null) }}>+ افزودن کاربر</Button>
+        {canCreate && (
+          <Button onClick={() => { setCreateOpen(true); setMutationError(null) }}>+ افزودن کاربر</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -129,9 +147,12 @@ export function UsersClient() {
               <TableHead>نام کاربری</TableHead>
               <TableHead>نام</TableHead>
               <TableHead>نقش</TableHead>
+              <TableHead>محدوده دسترسی</TableHead>
               <TableHead>وضعیت</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
-              <TableHead className="w-36">عملیات</TableHead>
+              {(canEdit || canDelete) && (
+                <TableHead className="w-36">عملیات</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -140,80 +161,95 @@ export function UsersClient() {
                 <TableCell className="font-medium">{user.username}</TableCell>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{roleLabels[user.role] ?? user.role}</TableCell>
+                <TableCell className="text-sm text-gray-600">{scopeLabel(user)}</TableCell>
                 <TableCell>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                     {user.isActive ? 'فعال' : 'غیرفعال'}
                   </span>
                 </TableCell>
                 <TableCell>{new Date(user.createdAt).toLocaleDateString('fa-IR')}</TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { setEditTarget(user); setMutationError(null) }}>
-                      ویرایش
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (confirm('آیا از حذف این کاربر مطمئن هستید؟')) {
-                          deleteMutation.mutate(user.id)
-                        }
-                      }}
-                    >
-                      حذف
-                    </Button>
-                  </div>
-                </TableCell>
+                {(canEdit || canDelete) && (
+                  <TableCell>
+                    <div className="flex gap-2">
+                      {canEdit && (
+                        <Button size="sm" variant="outline" onClick={() => { setEditTarget(user); setMutationError(null) }}>
+                          ویرایش
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (confirm('آیا از حذف این کاربر مطمئن هستید؟')) {
+                              deleteMutation.mutate(user.id)
+                            }
+                          }}
+                        >
+                          حذف
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
 
-      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setMutationError(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>افزودن کاربر جدید</DialogTitle>
-          </DialogHeader>
-          {mutationError && createOpen && (
-            <p className="text-sm text-red-500">{mutationError}</p>
-          )}
-          <UserForm
-            onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setCreateOpen(false)}
-            isPending={createMutation.isPending}
-            submitLabel="ایجاد"
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) { setEditTarget(null); setMutationError(null) } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ویرایش کاربر</DialogTitle>
-          </DialogHeader>
-          {mutationError && !!editTarget && (
-            <p className="text-sm text-red-500">{mutationError}</p>
-          )}
-          {editTarget && (
+      {/* Create dialog */}
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setMutationError(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>افزودن کاربر جدید</DialogTitle>
+            </DialogHeader>
+            {mutationError && createOpen && (
+              <p className="text-sm text-red-500">{mutationError}</p>
+            )}
             <UserForm
-              isEdit
-              defaultValues={{
-                username: editTarget.username,
-                name: editTarget.name,
-                email: editTarget.email ?? '',
-                role: editTarget.role,
-                isActive: editTarget.isActive,
-              }}
-              onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-              onCancel={() => setEditTarget(null)}
-              isPending={updateMutation.isPending}
-              submitLabel="ذخیره تغییرات"
+              onSubmit={(data) => createMutation.mutate(data)}
+              onCancel={() => setCreateOpen(false)}
+              isPending={createMutation.isPending}
+              submitLabel="ایجاد"
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit dialog */}
+      {canEdit && (
+        <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) { setEditTarget(null); setMutationError(null) } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ویرایش کاربر</DialogTitle>
+            </DialogHeader>
+            {mutationError && !!editTarget && (
+              <p className="text-sm text-red-500">{mutationError}</p>
+            )}
+            {editTarget && (
+              <UserForm
+                isEdit
+                defaultValues={{
+                  username: editTarget.username,
+                  name: editTarget.name,
+                  email: editTarget.email ?? '',
+                  role: editTarget.role,
+                  isActive: editTarget.isActive,
+                  fieldId: editTarget.scopes.find(s => s.scopeType === 'FIELD')?.fieldId ?? '',
+                  marketId: editTarget.scopes.find(s => s.scopeType === 'MARKET')?.marketId ?? '',
+                }}
+                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
+                onCancel={() => setEditTarget(null)}
+                isPending={updateMutation.isPending}
+                submitLabel="ذخیره تغییرات"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

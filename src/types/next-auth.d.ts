@@ -1,10 +1,11 @@
 import type { DefaultSession } from 'next-auth'
+import type { Role } from '@/lib/permissions'
 
 declare module 'next-auth' {
   interface Session {
     user: {
       id: string
-      role: string
+      role: Role
     } & DefaultSession['user']
   }
 }

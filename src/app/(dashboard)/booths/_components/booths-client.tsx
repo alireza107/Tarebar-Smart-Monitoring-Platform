@@ -22,6 +22,7 @@ import type { Booth } from '@/modules/booth/types'
 import type { Market } from '@/modules/market/types'
 import type { BoothCategory } from '@/modules/booth-category/types'
 import type { CreateBoothDto } from '@/modules/booth/schema'
+import { usePermissions } from '@/hooks/use-permissions'
 
 async function fetchBooths(): Promise<Booth[]> {
   const res = await fetch('/api/booths')
@@ -75,6 +76,10 @@ export function BoothsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Booth | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can('booth', 'create')
+  const canEdit = can('booth', 'update')
+  const canDelete = can('booth', 'delete')
 
   const { data: booths = [], isLoading } = useQuery({
     queryKey: ['booths'],
@@ -110,7 +115,9 @@ export function BoothsClient() {
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">غرفه‌ها</h1>
-        <Button onClick={() => setCreateOpen(true)}>+ افزودن غرفه</Button>
+        {canCreate && (
+          <Button onClick={() => setCreateOpen(true)}>+ افزودن غرفه</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -125,7 +132,9 @@ export function BoothsClient() {
               <TableHead>بازار</TableHead>
               <TableHead>دسته‌بندی</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
-              <TableHead className="w-32">عملیات</TableHead>
+              {(canEdit || canDelete) && (
+                <TableHead className="w-32">عملیات</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -135,70 +144,82 @@ export function BoothsClient() {
                 <TableCell>{booth.market.name}</TableCell>
                 <TableCell>{booth.category.name}</TableCell>
                 <TableCell>{new Date(booth.createdAt).toLocaleDateString('fa-IR')}</TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditTarget(booth)}>
-                      ویرایش
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (confirm('آیا از حذف این غرفه مطمئن هستید؟')) {
-                          deleteMutation.mutate(booth.id)
-                        }
-                      }}
-                    >
-                      حذف
-                    </Button>
-                  </div>
-                </TableCell>
+                {(canEdit || canDelete) && (
+                  <TableCell>
+                    <div className="flex gap-2">
+                      {canEdit && (
+                        <Button size="sm" variant="outline" onClick={() => setEditTarget(booth)}>
+                          ویرایش
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (confirm('آیا از حذف این غرفه مطمئن هستید؟')) {
+                              deleteMutation.mutate(booth.id)
+                            }
+                          }}
+                        >
+                          حذف
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>افزودن غرفه جدید</DialogTitle>
-          </DialogHeader>
-          <BoothForm
-            markets={markets}
-            categories={categories}
-            onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setCreateOpen(false)}
-            isPending={createMutation.isPending}
-            submitLabel="ایجاد"
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ویرایش غرفه</DialogTitle>
-          </DialogHeader>
-          {editTarget && (
+      {/* Create dialog */}
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>افزودن غرفه جدید</DialogTitle>
+            </DialogHeader>
             <BoothForm
               markets={markets}
               categories={categories}
-              defaultValues={{
-                number: editTarget.number,
-                marketId: editTarget.marketId,
-                categoryId: editTarget.categoryId,
-                ownerId: editTarget.ownerId ?? undefined,
-              }}
-              onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-              onCancel={() => setEditTarget(null)}
-              isPending={updateMutation.isPending}
-              submitLabel="ذخیره تغییرات"
+              onSubmit={(data) => createMutation.mutate(data)}
+              onCancel={() => setCreateOpen(false)}
+              isPending={createMutation.isPending}
+              submitLabel="ایجاد"
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit dialog */}
+      {canEdit && (
+        <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ویرایش غرفه</DialogTitle>
+            </DialogHeader>
+            {editTarget && (
+              <BoothForm
+                markets={markets}
+                categories={categories}
+                defaultValues={{
+                  number: editTarget.number,
+                  marketId: editTarget.marketId,
+                  categoryId: editTarget.categoryId,
+                  ownerId: editTarget.ownerId ?? undefined,
+                }}
+                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
+                onCancel={() => setEditTarget(null)}
+                isPending={updateMutation.isPending}
+                submitLabel="ذخیره تغییرات"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

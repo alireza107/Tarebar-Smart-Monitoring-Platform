@@ -21,6 +21,7 @@ import { MarketForm } from './market-form'
 import type { Market } from '@/modules/market/types'
 import type { Field } from '@/modules/field/types'
 import type { CreateMarketDto } from '@/modules/market/schema'
+import { usePermissions } from '@/hooks/use-permissions'
 
 async function fetchMarkets(): Promise<Market[]> {
   const res = await fetch('/api/markets')
@@ -67,6 +68,10 @@ export function MarketsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Market | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can('market', 'create')
+  const canEdit = can('market', 'update')
+  const canDelete = can('market', 'delete')
 
   const { data: markets = [], isLoading } = useQuery({
     queryKey: ['markets'],
@@ -97,7 +102,9 @@ export function MarketsClient() {
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">بازارها</h1>
-        <Button onClick={() => setCreateOpen(true)}>+ افزودن بازار</Button>
+        {canCreate && (
+          <Button onClick={() => setCreateOpen(true)}>+ افزودن بازار</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -112,7 +119,9 @@ export function MarketsClient() {
               <TableHead>میدان</TableHead>
               <TableHead>آدرس</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
-              <TableHead className="w-32">عملیات</TableHead>
+              {(canEdit || canDelete) && (
+                <TableHead className="w-32">عملیات</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -122,29 +131,35 @@ export function MarketsClient() {
                 <TableCell>{market.field.name}</TableCell>
                 <TableCell>{market.address ?? '—'}</TableCell>
                 <TableCell>{new Date(market.createdAt).toLocaleDateString('fa-IR')}</TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditTarget(market)}
-                    >
-                      ویرایش
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (confirm('آیا از حذف این بازار مطمئن هستید؟')) {
-                          deleteMutation.mutate(market.id)
-                        }
-                      }}
-                    >
-                      حذف
-                    </Button>
-                  </div>
-                </TableCell>
+                {(canEdit || canDelete) && (
+                  <TableCell>
+                    <div className="flex gap-2">
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditTarget(market)}
+                        >
+                          ویرایش
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (confirm('آیا از حذف این بازار مطمئن هستید؟')) {
+                              deleteMutation.mutate(market.id)
+                            }
+                          }}
+                        >
+                          حذف
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -152,39 +167,43 @@ export function MarketsClient() {
       )}
 
       {/* Create dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>افزودن بازار جدید</DialogTitle>
-          </DialogHeader>
-          <MarketForm
-            fields={fields}
-            onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setCreateOpen(false)}
-            isPending={createMutation.isPending}
-            submitLabel="ایجاد"
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit dialog */}
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ویرایش بازار</DialogTitle>
-          </DialogHeader>
-          {editTarget && (
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>افزودن بازار جدید</DialogTitle>
+            </DialogHeader>
             <MarketForm
               fields={fields}
-              defaultValues={{ name: editTarget.name, address: editTarget.address ?? undefined, fieldId: editTarget.fieldId }}
-              onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-              onCancel={() => setEditTarget(null)}
-              isPending={updateMutation.isPending}
-              submitLabel="ذخیره تغییرات"
+              onSubmit={(data) => createMutation.mutate(data)}
+              onCancel={() => setCreateOpen(false)}
+              isPending={createMutation.isPending}
+              submitLabel="ایجاد"
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit dialog */}
+      {canEdit && (
+        <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ویرایش بازار</DialogTitle>
+            </DialogHeader>
+            {editTarget && (
+              <MarketForm
+                fields={fields}
+                defaultValues={{ name: editTarget.name, address: editTarget.address ?? undefined, fieldId: editTarget.fieldId }}
+                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
+                onCancel={() => setEditTarget(null)}
+                isPending={updateMutation.isPending}
+                submitLabel="ذخیره تغییرات"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

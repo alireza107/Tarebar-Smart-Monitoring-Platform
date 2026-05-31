@@ -7,6 +7,15 @@ export const createUserSchema = z.object({
   password: z.string().min(6, 'رمز عبور حداقل ۶ کاراکتر است'),
   role: z.enum(['ORG_ADMIN', 'FIELD_MANAGER', 'MARKET_MANAGER']),
   isActive: z.boolean().default(true),
+  fieldId: z.string().optional(),
+  marketId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'FIELD_MANAGER' && !data.fieldId) {
+    ctx.addIssue({ code: 'custom', path: ['fieldId'], message: 'انتخاب میدان الزامی است' })
+  }
+  if (data.role === 'MARKET_MANAGER' && !data.marketId) {
+    ctx.addIssue({ code: 'custom', path: ['marketId'], message: 'انتخاب بازار الزامی است' })
+  }
 })
 
 export const updateUserSchema = z.object({
@@ -15,6 +24,8 @@ export const updateUserSchema = z.object({
   password: z.string().min(6, 'رمز عبور حداقل ۶ کاراکتر است').optional(),
   role: z.enum(['ORG_ADMIN', 'FIELD_MANAGER', 'MARKET_MANAGER']).optional(),
   isActive: z.boolean().optional(),
+  fieldId: z.string().optional(),
+  marketId: z.string().optional(),
 })
 
 export type CreateUserDto = z.infer<typeof createUserSchema>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { unauthorized, forbidden, validationError, serverError } from '@/lib/api-responses'
 import { checkPermission, PermissionError } from '@/lib/permissions'
+import { assertCameraScope, ScopeError } from '@/lib/scope-guard'
 import { cameraService } from '@/modules/camera/service'
 import { createCameraSchema } from '@/modules/camera/schema'
 import type { Role } from '@/lib/permissions'
@@ -27,10 +28,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const parsed = createCameraSchema.safeParse(body)
     if (!parsed.success) return validationError(parsed.error)
+    await assertCameraScope(session.user.id, session.user.role as Role, {
+      fieldId: parsed.data.fieldId,
+      marketId: parsed.data.marketId,
+      boothId: parsed.data.boothId,
+    })
     const camera = await cameraService.create(parsed.data)
     return NextResponse.json({ data: camera }, { status: 201 })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }

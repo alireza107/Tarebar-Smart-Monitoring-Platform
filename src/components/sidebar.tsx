@@ -2,22 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-
-const navItems = [
-  { href: '/dashboard',        label: 'داشبورد' },
-  { href: '/fields',           label: 'میادین' },
-  { href: '/markets',          label: 'بازارها' },
-  { href: '/booths',           label: 'غرفه‌ها' },
-  { href: '/booth-categories', label: 'دسته‌بندی غرفه' },
-  { href: '/users',            label: 'کاربران' },
-  { href: '/cameras',          label: 'دوربین‌ها' },
-  { href: '/monitoring',       label: 'مانیتورینگ' },
-  { href: '/reports',          label: 'گزارش‌ها' },
-  { href: '/settings',         label: 'تنظیمات' },
-]
+import { useSession } from 'next-auth/react'
+import { NAV_ITEMS } from '@/lib/nav-permissions'
+import type { Role } from '@/lib/permissions'
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const role = session?.user?.role as Role | undefined
+
+  const visibleItems = role
+    ? NAV_ITEMS.filter((item) => item.roles.includes(role))
+    : []
 
   return (
     <aside className="flex h-screen w-56 flex-col border-l bg-white">
@@ -26,7 +22,7 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <li key={item.href}>

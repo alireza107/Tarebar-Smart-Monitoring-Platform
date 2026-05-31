@@ -20,6 +20,7 @@ import {
 import { FieldForm } from './field-form'
 import type { Field } from '@/modules/field/types'
 import type { CreateFieldDto } from '@/modules/field/schema'
+import { usePermissions } from '@/hooks/use-permissions'
 
 async function fetchFields(): Promise<Field[]> {
   const res = await fetch('/api/fields')
@@ -59,6 +60,10 @@ export function FieldsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Field | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can('field', 'create')
+  const canEdit = can('field', 'update')
+  const canDelete = can('field', 'delete')
 
   const { data: fields = [], isLoading } = useQuery({
     queryKey: ['fields'],
@@ -84,7 +89,9 @@ export function FieldsClient() {
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">میادین</h1>
-        <Button onClick={() => setCreateOpen(true)}>+ افزودن میدان</Button>
+        {canCreate && (
+          <Button onClick={() => setCreateOpen(true)}>+ افزودن میدان</Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -98,7 +105,9 @@ export function FieldsClient() {
               <TableHead>نام</TableHead>
               <TableHead>آدرس</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
-              <TableHead className="w-32">عملیات</TableHead>
+              {(canEdit || canDelete) && (
+                <TableHead className="w-32">عملیات</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -107,29 +116,35 @@ export function FieldsClient() {
                 <TableCell className="font-medium">{field.name}</TableCell>
                 <TableCell>{field.address}</TableCell>
                 <TableCell>{new Date(field.createdAt).toLocaleDateString('fa-IR')}</TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditTarget(field)}
-                    >
-                      ویرایش
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (confirm('آیا از حذف این میدان مطمئن هستید؟')) {
-                          deleteMutation.mutate(field.id)
-                        }
-                      }}
-                    >
-                      حذف
-                    </Button>
-                  </div>
-                </TableCell>
+                {(canEdit || canDelete) && (
+                  <TableCell>
+                    <div className="flex gap-2">
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditTarget(field)}
+                        >
+                          ویرایش
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (confirm('آیا از حذف این میدان مطمئن هستید؟')) {
+                              deleteMutation.mutate(field.id)
+                            }
+                          }}
+                        >
+                          حذف
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -137,37 +152,41 @@ export function FieldsClient() {
       )}
 
       {/* Create dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>افزودن میدان جدید</DialogTitle>
-          </DialogHeader>
-          <FieldForm
-            onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setCreateOpen(false)}
-            isPending={createMutation.isPending}
-            submitLabel="ایجاد"
-          />
-        </DialogContent>
-      </Dialog>
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>افزودن میدان جدید</DialogTitle>
+            </DialogHeader>
+            <FieldForm
+              onSubmit={(data) => createMutation.mutate(data)}
+              onCancel={() => setCreateOpen(false)}
+              isPending={createMutation.isPending}
+              submitLabel="ایجاد"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Edit dialog */}
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ویرایش میدان</DialogTitle>
-          </DialogHeader>
-          {editTarget && (
-            <FieldForm
-              defaultValues={{ name: editTarget.name, address: editTarget.address }}
-              onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
-              onCancel={() => setEditTarget(null)}
-              isPending={updateMutation.isPending}
-              submitLabel="ذخیره تغییرات"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {canEdit && (
+        <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ویرایش میدان</DialogTitle>
+            </DialogHeader>
+            {editTarget && (
+              <FieldForm
+                defaultValues={{ name: editTarget.name, address: editTarget.address }}
+                onSubmit={(data) => updateMutation.mutate({ id: editTarget.id, data })}
+                onCancel={() => setEditTarget(null)}
+                isPending={updateMutation.isPending}
+                submitLabel="ذخیره تغییرات"
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
