@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { toast } from 'sonner'
 import { UserForm, type UserFormValues } from './user-form'
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import type { User } from '@/modules/user/types'
 import { usePermissions } from '@/hooks/use-permissions'
 
@@ -91,6 +93,7 @@ export function UsersClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const { can } = usePermissions()
   const canCreate = can('user', 'create')
@@ -124,7 +127,11 @@ export function UsersClient() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteUser,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] })
+      toast.success('کاربر با موفقیت حذف شد')
+    },
+    onError: () => toast.error('خطا در حذف کاربر'),
   })
 
   return (
@@ -181,11 +188,7 @@ export function UsersClient() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm('آیا از حذف این کاربر مطمئن هستید؟')) {
-                              deleteMutation.mutate(user.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(user)}
                         >
                           حذف
                         </Button>
@@ -198,6 +201,14 @@ export function UsersClient() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="آیا از حذف این کاربر مطمئن هستید؟ این عملیات قابل بازگشت نیست."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id) }}
+      />
 
       {/* Create dialog */}
       {canCreate && (

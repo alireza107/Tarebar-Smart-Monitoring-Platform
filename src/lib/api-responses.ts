@@ -13,5 +13,11 @@ export const notFound = (message = 'Not found') =>
 export const validationError = (error: ZodError) =>
   NextResponse.json({ error: error.flatten(), code: 'VALIDATION_ERROR' }, { status: 422 })
 
+export const conflict = (message = 'Conflict') =>
+  NextResponse.json({ error: message, code: 'CONFLICT' }, { status: 409 })
+
+export const badRequest = (message = 'Bad request') =>
+  NextResponse.json({ error: message, code: 'BAD_REQUEST' }, { status: 400 })
+
 export const serverError = (message = 'Internal server error') =>
   NextResponse.json({ error: message, code: 'INTERNAL_ERROR' }, { status: 500 })

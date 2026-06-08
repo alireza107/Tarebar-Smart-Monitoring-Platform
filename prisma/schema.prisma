@@ -26,6 +26,15 @@ enum ScopeType {
   MARKET
 }
 
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  IMPORT
+  EXPORT
+}
+
 // ─── Auth.js required models ─────────────────────────────────────────────────
 
 model Account {
@@ -123,6 +132,7 @@ model Market {
   booths  Booth[]
   cameras Camera[]
   scopes  UserScope[]
+  regions Region[]
 }
 
 model BoothCategory {
@@ -148,6 +158,7 @@ model Booth {
   market   Market        @relation(fields: [marketId], references: [id])
   category BoothCategory @relation(fields: [categoryId], references: [id])
   cameras  Camera[]
+  regions  RegionBooth[]
 
   @@unique([marketId, number])
 }
@@ -167,4 +178,95 @@ model Camera {
   field  Field?  @relation(fields: [fieldId], references: [id])
   market Market? @relation(fields: [marketId], references: [id])
   booth  Booth?  @relation(fields: [boothId], references: [id])
+
+  regions CameraRegion[]
+}
+
+// ─── Region Management ──────────────────────────────────────────────────────
+//
+// A Region is a user-defined spatial area inside a Market. It is intentionally
+// geometry-free: the same logical Region can be seen by many cameras, and each
+// camera stores its OWN polygon for the portion it sees (see CameraRegion).
+//
+//   Region ──< CameraRegion >── Camera     (M:N, geometry lives on the edge)
+//   Region ──< RegionBooth   >── Booth      (M:N, "Stall mapping")
+//
+// "Stall" in the product spec maps to the existing Booth entity.
+
+model Region {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  marketId    String
+  color       String? // optional UI hint, e.g. "#22c55e"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  market        Market         @relation(fields: [marketId], references: [id])
+  cameraRegions CameraRegion[]
+  booths        RegionBooth[]
+
+  // Unique region name per market (case-insensitive enforced in the service layer).
+  @@unique([marketId, name])
+  @@index([marketId])
+}
+
+// The Camera <-> Region edge. Owns the geometry for how a single camera sees a
+// single region. EffectiveArea = mainPolygon - exclusionPolygons.
+//
+// Coordinates are normalized floats in [0,1] relative to the camera frame
+// (resolution-independent). Shapes:
+//   mainPolygon        : Json  -> Point[]      e.g. [{ "x": 0.1, "y": 0.2 }, ...]
+//   exclusionPolygons  : Json  -> Point[][]    e.g. [[ {x,y}, ... ], ...]
+model CameraRegion {
+  id                String    @id @default(cuid())
+  cameraId          String
+  regionId          String
+  mainPolygon       Json
+  exclusionPolygons Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  camera Camera @relation(fields: [cameraId], references: [id])
+  region Region @relation(fields: [regionId], references: [id])
+
+  // One mapping per (camera, region) pair.
+  @@unique([cameraId, regionId])
+  @@index([regionId])
+  @@index([cameraId])
+}
+
+// The Region <-> Booth (Stall) edge. Pure association; business users decide it.
+model RegionBooth {
+  id        String    @id @default(cuid())
+  regionId  String
+  boothId   String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  region Region @relation(fields: [regionId], references: [id])
+  booth  Booth  @relation(fields: [boothId], references: [id])
+
+  @@unique([regionId, boothId])
+  @@index([regionId])
+  @@index([boothId])
+}
+
+// Generic, append-only audit trail for sensitive mutations.
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String? // User.id (nullable: keep history if user removed)
+  actorName  String?
+  action     AuditAction
+  entityType String // "Region" | "CameraRegion" | "RegionBooth"
+  entityId   String
+  marketId   String? // denormalized for scope-filtered audit queries
+  metadata   Json? // before/after snapshot or diff
+  createdAt  DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([marketId])
+  @@index([createdAt])
 }

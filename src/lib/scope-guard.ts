@@ -104,3 +104,11 @@ export async function assertCameraScope(
     return
   }
 }
+
+/**
+ * Asserts that a Region is within the user's scope.
+ * A Region is anchored to a Market, so its scope is exactly the Market's scope.
+ */
+export async function assertRegionScope(userId: string, role: Role, marketId: string): Promise<void> {
+  await assertMarketScope(userId, role, marketId)
+}

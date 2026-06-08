@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { toast } from 'sonner'
 import { MarketForm } from './market-form'
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import type { Market } from '@/modules/market/types'
 import type { Field } from '@/modules/field/types'
 import type { CreateMarketDto } from '@/modules/market/schema'
@@ -68,6 +70,7 @@ export function MarketsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Market | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Market | null>(null)
   const { can } = usePermissions()
   const canCreate = can('market', 'create')
   const canEdit = can('market', 'update')
@@ -95,7 +98,11 @@ export function MarketsClient() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteMarket,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['markets'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['markets'] })
+      toast.success('بازار با موفقیت حذف شد')
+    },
+    onError: () => toast.error('خطا در حذف بازار'),
   })
 
   return (
@@ -148,11 +155,7 @@ export function MarketsClient() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm('آیا از حذف این بازار مطمئن هستید؟')) {
-                              deleteMutation.mutate(market.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(market)}
                         >
                           حذف
                         </Button>
@@ -165,6 +168,14 @@ export function MarketsClient() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="آیا از حذف این بازار مطمئن هستید؟ این عملیات قابل بازگشت نیست."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id) }}
+      />
 
       {/* Create dialog */}
       {canCreate && (

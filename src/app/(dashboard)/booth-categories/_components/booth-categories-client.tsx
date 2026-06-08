@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { toast } from 'sonner'
 import { BoothCategoryForm } from './booth-category-form'
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import type { BoothCategory } from '@/modules/booth-category/types'
 import type { CreateBoothCategoryDto } from '@/modules/booth-category/schema'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -60,6 +62,7 @@ export function BoothCategoriesClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<BoothCategory | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BoothCategory | null>(null)
   const { can } = usePermissions()
   const canCreate = can('booth_category', 'create')
   const canEdit = can('booth_category', 'update')
@@ -82,7 +85,11 @@ export function BoothCategoriesClient() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteCategory,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['booth-categories'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['booth-categories'] })
+      toast.success('دسته‌بندی با موفقیت حذف شد')
+    },
+    onError: () => toast.error('خطا در حذف دسته‌بندی'),
   })
 
   return (
@@ -127,11 +134,7 @@ export function BoothCategoriesClient() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm('آیا از حذف این دسته‌بندی مطمئن هستید؟')) {
-                              deleteMutation.mutate(cat.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(cat)}
                         >
                           حذف
                         </Button>
@@ -144,6 +147,14 @@ export function BoothCategoriesClient() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="آیا از حذف این دسته‌بندی مطمئن هستید؟ این عملیات قابل بازگشت نیست."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id) }}
+      />
 
       {/* Create dialog */}
       {canCreate && (

@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { toast } from 'sonner'
 import { BoothForm } from './booth-form'
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import type { Booth } from '@/modules/booth/types'
 import type { Market } from '@/modules/market/types'
 import type { BoothCategory } from '@/modules/booth-category/types'
@@ -76,6 +78,7 @@ export function BoothsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Booth | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Booth | null>(null)
   const { can } = usePermissions()
   const canCreate = can('booth', 'create')
   const canEdit = can('booth', 'update')
@@ -108,7 +111,11 @@ export function BoothsClient() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteBooth,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['booths'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['booths'] })
+      toast.success('غرفه با موفقیت حذف شد')
+    },
+    onError: () => toast.error('خطا در حذف غرفه'),
   })
 
   return (
@@ -157,11 +164,7 @@ export function BoothsClient() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm('آیا از حذف این غرفه مطمئن هستید؟')) {
-                              deleteMutation.mutate(booth.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(booth)}
                         >
                           حذف
                         </Button>
@@ -174,6 +177,14 @@ export function BoothsClient() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="آیا از حذف این غرفه مطمئن هستید؟ این عملیات قابل بازگشت نیست."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id) }}
+      />
 
       {/* Create dialog */}
       {canCreate && (

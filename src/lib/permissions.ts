@@ -1,7 +1,7 @@
 import type { Session } from 'next-auth'
 
 export type Role = 'ORG_ADMIN' | 'FIELD_MANAGER' | 'MARKET_MANAGER'
-export type Resource = 'field' | 'market' | 'booth' | 'booth_category' | 'user' | 'camera' | 'report'
+export type Resource = 'field' | 'market' | 'booth' | 'booth_category' | 'user' | 'camera' | 'report' | 'region'
 export type Action = 'create' | 'read' | 'update' | 'delete'
 
 type PermissionMatrix = Record<Role, Record<Resource, Action[]>>
@@ -15,6 +15,7 @@ const matrix: PermissionMatrix = {
     user:           ['create', 'read', 'update', 'delete'],
     camera:         ['create', 'read', 'update', 'delete'],
     report:         ['create', 'read', 'update', 'delete'],
+    region:         ['create', 'read', 'update', 'delete'],
   },
   FIELD_MANAGER: {
     field:          ['read'],
@@ -24,6 +25,7 @@ const matrix: PermissionMatrix = {
     user:           ['read'],
     camera:         ['create', 'read', 'update', 'delete'],
     report:         ['read'],
+    region:         ['create', 'read', 'update', 'delete'],
   },
   MARKET_MANAGER: {
     field:          [],
@@ -33,6 +35,7 @@ const matrix: PermissionMatrix = {
     user:           ['read'],
     camera:         ['read'],
     report:         ['read'],
+    region:         ['create', 'read', 'update', 'delete'],
   },
 }
 

@@ -17,7 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { toast } from 'sonner'
 import { FieldForm } from './field-form'
+import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import type { Field } from '@/modules/field/types'
 import type { CreateFieldDto } from '@/modules/field/schema'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -60,6 +62,7 @@ export function FieldsClient() {
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Field | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Field | null>(null)
   const { can } = usePermissions()
   const canCreate = can('field', 'create')
   const canEdit = can('field', 'update')
@@ -82,7 +85,11 @@ export function FieldsClient() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteField,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fields'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fields'] })
+      toast.success('میدان با موفقیت حذف شد')
+    },
+    onError: () => toast.error('خطا در حذف میدان'),
   })
 
   return (
@@ -133,11 +140,7 @@ export function FieldsClient() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm('آیا از حذف این میدان مطمئن هستید؟')) {
-                              deleteMutation.mutate(field.id)
-                            }
-                          }}
+                          onClick={() => setDeleteTarget(field)}
                         >
                           حذف
                         </Button>
@@ -150,6 +153,14 @@ export function FieldsClient() {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        description="آیا از حذف این میدان مطمئن هستید؟ این عملیات قابل بازگشت نیست."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id) }}
+      />
 
       {/* Create dialog */}
       {canCreate && (

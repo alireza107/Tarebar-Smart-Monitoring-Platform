@@ -43,6 +43,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['ORG_ADMIN', 'FIELD_MANAGER', 'MARKET_MANAGER'],
   },
   {
+    href: '/regions',
+    label: 'مناطق',
+    roles: ['ORG_ADMIN', 'FIELD_MANAGER', 'MARKET_MANAGER'],
+  },
+  {
     href: '/monitoring',
     label: 'مانیتورینگ',
     roles: ['ORG_ADMIN', 'FIELD_MANAGER', 'MARKET_MANAGER'],
