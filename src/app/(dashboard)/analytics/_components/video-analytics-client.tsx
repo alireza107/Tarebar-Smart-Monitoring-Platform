@@ -1,10 +1,11 @@
 'use client'
 
-import { FormEvent, useMemo, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   AlertCircle,
+  Ban,
   CheckCircle2,
   Clock3,
   Download,
@@ -27,6 +28,30 @@ type Application = {
   name: string
   description: string
   requires_camera_config: boolean
+  metric_schema: MetricDefinition[]
+}
+
+type MetricDefinition = {
+  key: string
+  label: string
+  value_type: 'number' | 'integer' | 'boolean' | 'string' | 'table'
+  unit: string | null
+  aggregation: 'current' | 'total' | 'average' | 'minimum' | 'maximum'
+  display: 'card' | 'chart' | 'status' | 'counter' | 'table'
+  availability: 'live' | 'final' | 'both'
+}
+
+type LiveEvent = {
+  type: string
+  job_id: string
+  timestamp: string
+  status: AnalyticsJob['status']
+  frame_index: number | null
+  progress: number | null
+  elapsed_seconds: number
+  metrics: Record<string, unknown>
+  preview_reference: string | null
+  message: string | null
 }
 
 type Artifact = {
@@ -41,13 +66,15 @@ type AnalyticsJob = {
   application: Application
   original_filename: string
   camera_id: string
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
   created_at: string
   updated_at: string
   max_frames: number | null
   error: string | null
   summary: Record<string, unknown> | null
   artifacts: Record<string, Artifact>
+  live: LiveEvent | null
+  preview_url: string | null
 }
 
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -76,6 +103,7 @@ export function VideoAnalyticsClient() {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [selectedApplication, setSelectedApplication] = useState('people_counting')
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
 
   const applicationsQuery = useQuery<{ data: Application[] }>({
     queryKey: ['video-analytics-applications'],
@@ -87,7 +115,7 @@ export function VideoAnalyticsClient() {
     queryFn: () => apiJson('/api/v1/jobs'),
     refetchInterval: query => {
       const jobs = query.state.data?.data ?? []
-      return jobs.some(job => job.status === 'queued' || job.status === 'running') ? 2_000 : 10_000
+      return jobs.some(job => ['queued', 'running', 'cancelling'].includes(job.status)) ? 2_000 : 10_000
     },
     retry: 1,
   })
@@ -100,10 +128,11 @@ export function VideoAnalyticsClient() {
   const createJob = useMutation({
     mutationFn: (formData: FormData) =>
       apiJson<{ data: AnalyticsJob }>('/api/v1/jobs', { method: 'POST', body: formData }),
-    onSuccess: () => {
+    onSuccess: response => {
       formRef.current?.reset()
       setSelectedApplication('people_counting')
       queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
+      setSelectedJobId(response.data.id)
     },
   })
 
@@ -161,9 +190,10 @@ export function VideoAnalyticsClient() {
             {selected && <p className="text-xs text-muted-foreground">{selected.description}</p>}
             {(selectedApplication === 'configured_queue' || selectedApplication === 'full_analytics') && (
               <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-6 text-blue-800">
-                <p className="font-semibold">صف پیکربندی‌شده چیست؟</p>
+                <p className="font-semibold">صف افراد تشخیص‌داده‌شده چیست؟</p>
                 <p>
-                  این حالت افراد داخل محدوده صف تعریف‌شده در فایل YAML را دنبال می‌کند و طول صف،
+                  این تحلیل افراد داخل محدوده صف ویدیو را دنبال می‌کند و با صف کارهای پردازشی
+                  بارگذاری‌ها متفاوت است. طول صف،
                   زمان انتظار تقریبی، عبور از ظرفیت مجاز و میزان حرکت به‌سمت نقطه خدمت را گزارش می‌دهد.
                   برای اجرا باید چندضلعی صف، ظرفیت و نقطه خدمت در YAML دوربین تعریف شده باشد.
                 </p>
@@ -213,7 +243,7 @@ export function VideoAnalyticsClient() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">پردازش‌ها</h2>
+          <h2 className="text-base font-semibold">صف کارهای پردازشی</h2>
           <Button variant="outline" size="sm" onClick={() => jobsQuery.refetch()} disabled={jobsQuery.isFetching}>
             <RefreshCw className={jobsQuery.isFetching ? 'animate-spin' : ''} /> بروزرسانی
           </Button>
@@ -226,7 +256,14 @@ export function VideoAnalyticsClient() {
           </div>
         ) : (
           <div className="space-y-4">
-            {jobsQuery.data?.data.map(job => <JobCard key={job.id} job={job} />)}
+            {jobsQuery.data?.data.map((job, index) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                selected={selectedJobId === job.id || (!selectedJobId && index === 0)}
+                onSelect={() => setSelectedJobId(job.id)}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -234,25 +271,29 @@ export function VideoAnalyticsClient() {
   )
 }
 
-function JobCard({ job }: { job: AnalyticsJob }) {
+function JobCard({
+  job,
+  selected,
+  onSelect,
+}: {
+  job: AnalyticsJob
+  selected: boolean
+  onSelect: () => void
+}) {
+  const queryClient = useQueryClient()
+  const { live, history, connected } = useJobLive(job, selected)
+  const cancelJob = useMutation({
+    mutationFn: () => apiJson(`/api/v1/jobs/${job.id}/cancel`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] }),
+  })
   const output = job.artifacts.heatmap_video ?? job.artifacts.annotated_video
   const outputLabel = job.artifacts.heatmap_video
     ? 'ویدیوی نقشه حرارتی تراکم'
     : 'ویدیوی خروجی تحلیل'
-  const summaryItems = job.summary
-    ? [
-        ['فریم پردازش‌شده', job.summary.frames],
-        ['FPS ویدیو', formatMetric(job.summary.fps)],
-        ['FPS پردازش', formatMetric(job.summary.processing_fps)],
-        ['بیشترین افراد', job.summary.maximum_confirmed_humans],
-        ['بیشترین اشغال منطقه', job.summary.maximum_total_zone_occupancy],
-      ].filter(([, value]) => value !== undefined && value !== null)
-    : []
-
   return (
-    <article className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <article className={`overflow-hidden rounded-xl border bg-card shadow-sm ${selected ? 'ring-2 ring-primary/30' : ''}`}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
-        <div className="flex min-w-0 items-start gap-3">
+        <button type="button" onClick={onSelect} className="flex min-w-0 items-start gap-3 text-start">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <FileVideo className="size-5 text-primary" />
           </div>
@@ -260,18 +301,50 @@ function JobCard({ job }: { job: AnalyticsJob }) {
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
             <p className="mt-1 text-xs text-muted-foreground">{job.application.name} · {job.camera_id}</p>
           </div>
+        </button>
+        <div className="flex items-center gap-2">
+          {selected && ['queued', 'running', 'cancelling'].includes(job.status) && (
+            <span className={`size-2 rounded-full ${connected ? 'bg-green-500' : 'bg-amber-500'}`} title={connected ? 'SSE connected' : 'Polling fallback'} />
+          )}
+          <JobStatus status={job.status} />
         </div>
-        <JobStatus status={job.status} />
       </div>
 
       {job.status === 'failed' && (
         <div className="m-4 rounded-lg bg-red-50 p-3 text-xs text-red-700" dir="ltr">{job.error}</div>
       )}
 
-      {(job.status === 'queued' || job.status === 'running') && (
-        <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          {job.status === 'queued' ? 'در صف پردازش...' : 'مدل در حال پردازش ویدیو است...'}
+      {selected && ['queued', 'running', 'cancelling'].includes(job.status) && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              {job.status === 'queued' ? 'در صف پردازش...' : job.status === 'cancelling' ? 'در حال لغو...' : 'پردازش زنده در حال اجرا است'}
+            </span>
+            {job.status !== 'cancelling' && (
+              <Button variant="outline" size="sm" onClick={() => cancelJob.mutate()} disabled={cancelJob.isPending}>
+                <Ban /> لغو
+              </Button>
+            )}
+          </div>
+          {typeof live?.progress === 'number' && (
+            <div className="space-y-1">
+              <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${live.progress}%` }} /></div>
+              <p className="text-xs text-muted-foreground" dir="ltr">{live.progress.toFixed(1)}% · frame {(live.frame_index ?? -1) + 1}</p>
+            </div>
+          )}
+          {live?.preview_reference && (
+            <div className="aspect-video w-full max-w-4xl overflow-hidden rounded-lg bg-black">
+              {/* The persistent MJPEG request keeps the previous decoded frame visible. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="size-full object-contain"
+                src={`${API_BASE}/api/v1/jobs/${job.id}/preview-stream`}
+                alt="Live processed video stream"
+              />
+            </div>
+          )}
+          <DynamicMetrics schema={job.application.metric_schema} live={live} history={history} phase="live" />
         </div>
       )}
 
@@ -284,16 +357,7 @@ function JobCard({ job }: { job: AnalyticsJob }) {
             </div>
           )}
 
-          {summaryItems.length > 0 && (
-            <div className="grid gap-2 sm:grid-cols-3">
-              {summaryItems.map(([label, value]) => (
-                <div key={String(label)} className="rounded-lg bg-muted/50 px-3 py-2">
-                  <p className="text-xs text-muted-foreground">{String(label)}</p>
-                  <p className="mt-0.5 font-semibold" dir="ltr">{String(value)}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
 
           <div className="flex flex-wrap gap-2">
             {Object.entries(job.artifacts)
@@ -312,20 +376,128 @@ function JobCard({ job }: { job: AnalyticsJob }) {
           </div>
         </div>
       )}
+      {job.status === 'cancelled' && (
+        <div className="p-5 text-sm text-muted-foreground">این کار پردازشی لغو شد. رویدادها و خروجی‌های جزئی برای بررسی نگهداری شده‌اند.</div>
+      )}
     </article>
   )
 }
 
-function formatMetric(value: unknown): string | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : undefined
+function useJobLive(job: AnalyticsJob, enabled: boolean) {
+  const queryClient = useQueryClient()
+  const [live, setLive] = useState<LiveEvent | null>(job.live)
+  const [history, setHistory] = useState<Record<string, number[]>>({})
+  const [connected, setConnected] = useState(false)
+
+  useEffect(() => {
+    if (!job.live) return
+    setLive(previous => ({
+      ...job.live!,
+      metrics: { ...(previous?.metrics ?? {}), ...job.live!.metrics },
+      preview_reference: job.live!.preview_reference ?? previous?.preview_reference ?? null,
+    }))
+  }, [job.live])
+  useEffect(() => {
+    if (!enabled || !['queued', 'running', 'cancelling'].includes(job.status)) return
+    const source = new EventSource(`${API_BASE}/api/v1/jobs/${job.id}/events`)
+    const receive = (raw: Event) => {
+      const message = raw as MessageEvent<string>
+      try {
+        const next = JSON.parse(message.data) as LiveEvent
+        setLive(previous => ({
+          ...next,
+          metrics: { ...(previous?.metrics ?? {}), ...next.metrics },
+          preview_reference: next.preview_reference ?? previous?.preview_reference ?? null,
+        }))
+        setHistory(previous => appendHistory(previous, next.metrics))
+        if (['job_completed', 'job_failed', 'job_cancelled'].includes(next.type)) {
+          source.close()
+          queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
+        }
+      } catch {}
+    }
+    const eventTypes = ['job_started', 'preview_updated', 'metrics_updated', 'progress_updated', 'warning', 'job_completed', 'job_failed', 'job_cancelled']
+    eventTypes.forEach(type => source.addEventListener(type, receive))
+    source.onopen = () => setConnected(true)
+    source.onerror = () => setConnected(false)
+    return () => source.close()
+  }, [enabled, job.id, job.status, queryClient])
+  return { live, history, connected }
+}
+
+function appendHistory(previous: Record<string, number[]>, metrics: Record<string, unknown>) {
+  const next = { ...previous }
+  Object.entries(metrics).forEach(([key, value]) => {
+    if (typeof value === 'number' && Number.isFinite(value)) next[key] = [...(next[key] ?? []), value].slice(-60)
+  })
+  return next
+}
+
+function DynamicMetrics({
+  schema,
+  live,
+  history,
+  phase,
+}: {
+  schema: MetricDefinition[]
+  live: LiveEvent | null
+  history: Record<string, number[]>
+  phase: 'live' | 'final'
+}) {
+  if (!live) return null
+  const metrics: Record<string, unknown> = { ...live.metrics, progress: live.progress, elapsed_seconds: live.elapsed_seconds }
+  const visible = schema.filter(item => item.availability === 'both' || item.availability === phase)
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {visible.map(definition => (
+        <MetricWidget key={definition.key} definition={definition} value={metrics[definition.key]} history={history[definition.key] ?? []} />
+      ))}
+    </div>
+  )
+}
+
+function MetricWidget({ definition, value, history }: { definition: MetricDefinition; value: unknown; history: number[] }) {
+  if (value === undefined || value === null) return null
+  if (definition.display === 'table' && typeof value === 'object' && !Array.isArray(value)) {
+    return (
+      <div className="rounded-lg border bg-muted/20 p-3 sm:col-span-2">
+        <p className="text-xs text-muted-foreground">{definition.label}</p>
+        <div className="mt-2 grid grid-cols-2 gap-1 text-xs" dir="ltr">
+          {Object.entries(value as Record<string, unknown>).map(([key, item]) => <div key={key} className="flex justify-between rounded bg-background px-2 py-1"><span>{key}</span><strong>{String(item)}</strong></div>)}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className={`rounded-lg border p-3 ${definition.display === 'status' ? 'border-blue-200 bg-blue-50' : 'bg-muted/20'}`}>
+      <p className="text-xs text-muted-foreground">{definition.label}</p>
+      <p className="mt-1 text-lg font-semibold" dir="ltr">{formatDisplayValue(value)}{definition.unit ? ` ${definition.unit}` : ''}</p>
+      {definition.display === 'chart' && history.length > 1 && <Sparkline values={history} />}
+    </div>
+  )
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const minimum = Math.min(...values)
+  const range = Math.max(...values) - minimum || 1
+  const points = values.map((value, index) => `${(index * 100) / (values.length - 1)},${30 - ((value - minimum) * 28) / range}`).join(' ')
+  return <svg viewBox="0 0 100 32" className="mt-2 h-8 w-full" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>
+}
+
+function formatDisplayValue(value: unknown) {
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(2)
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  return String(value)
 }
 
 function JobStatus({ status }: { status: AnalyticsJob['status'] }) {
   const config = {
     queued: { label: 'در صف', icon: Clock3, className: 'bg-amber-100 text-amber-700' },
     running: { label: 'در حال پردازش', icon: Activity, className: 'bg-blue-100 text-blue-700' },
+    cancelling: { label: 'در حال لغو', icon: Loader2, className: 'bg-amber-100 text-amber-700' },
     completed: { label: 'تکمیل شد', icon: CheckCircle2, className: 'bg-green-100 text-green-700' },
     failed: { label: 'ناموفق', icon: XCircle, className: 'bg-red-100 text-red-700' },
+    cancelled: { label: 'لغو شد', icon: Ban, className: 'bg-slate-100 text-slate-700' },
   }[status]
   const Icon = config.icon
   return (
