@@ -15,6 +15,7 @@ import {
   Camera,
   Monitor,
   BarChart3,
+  BrainCircuit,
   Settings,
   Shapes,
 } from 'lucide-react'
@@ -29,12 +30,13 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   '/cameras':          Camera,
   '/regions':          Shapes,
   '/monitoring':       Monitor,
+  '/analytics':        BrainCircuit,
   '/reports':          BarChart3,
   '/settings':         Settings,
 }
 
 const NAV_GROUPS = [
-  { label: 'عملیات',  hrefs: ['/dashboard', '/monitoring', '/reports'] },
+  { label: 'عملیات',  hrefs: ['/dashboard', '/monitoring', '/analytics', '/reports'] },
   { label: 'مدیریت',  hrefs: ['/fields', '/markets', '/booths', '/booth-categories'] },
   { label: 'سیستم',   hrefs: ['/users', '/cameras', '/regions', '/settings'] },
 ]

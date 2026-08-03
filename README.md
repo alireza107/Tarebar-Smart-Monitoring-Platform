@@ -69,6 +69,10 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+To use **Video Analytics** (`/analytics`), also start the FastAPI service from
+the sibling `video_analytics_mvp` repository on port 8000. The dashboard reads
+its address from `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL`.
+
 ---
 
 ## Available Scripts
@@ -175,6 +179,10 @@ Scope enforcement (own field / own market only) is applied in the service layer.
 | `/api/cameras/[id]` | GET · PATCH · DELETE |
 | `/api/dashboard/stats` | GET |
 | `/api/reports` | GET |
+
+Recorded-video jobs are sent directly from the browser to the separately
+running video analytics API. Generated videos, CSV files, event logs, and
+heatmaps remain in the CV repository's `outputs/jobs` directory.
 
 All routes return `{ data: ... }` on success. Errors use consistent codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
