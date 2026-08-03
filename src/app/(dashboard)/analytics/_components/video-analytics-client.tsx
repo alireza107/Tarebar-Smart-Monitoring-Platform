@@ -159,6 +159,16 @@ export function VideoAnalyticsClient() {
               ))}
             </select>
             {selected && <p className="text-xs text-muted-foreground">{selected.description}</p>}
+            {(selectedApplication === 'configured_queue' || selectedApplication === 'full_analytics') && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-6 text-blue-800">
+                <p className="font-semibold">صف پیکربندی‌شده چیست؟</p>
+                <p>
+                  این حالت افراد داخل محدوده صف تعریف‌شده در فایل YAML را دنبال می‌کند و طول صف،
+                  زمان انتظار تقریبی، عبور از ظرفیت مجاز و میزان حرکت به‌سمت نقطه خدمت را گزارش می‌دهد.
+                  برای اجرا باید چندضلعی صف، ظرفیت و نقطه خدمت در YAML دوربین تعریف شده باشد.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -225,10 +235,15 @@ export function VideoAnalyticsClient() {
 }
 
 function JobCard({ job }: { job: AnalyticsJob }) {
-  const output = job.artifacts.annotated_video
+  const output = job.artifacts.heatmap_video ?? job.artifacts.annotated_video
+  const outputLabel = job.artifacts.heatmap_video
+    ? 'ویدیوی نقشه حرارتی تراکم'
+    : 'ویدیوی خروجی تحلیل'
   const summaryItems = job.summary
     ? [
         ['فریم پردازش‌شده', job.summary.frames],
+        ['FPS ویدیو', formatMetric(job.summary.fps)],
+        ['FPS پردازش', formatMetric(job.summary.processing_fps)],
         ['بیشترین افراد', job.summary.maximum_confirmed_humans],
         ['بیشترین اشغال منطقه', job.summary.maximum_total_zone_occupancy],
       ].filter(([, value]) => value !== undefined && value !== null)
@@ -263,7 +278,10 @@ function JobCard({ job }: { job: AnalyticsJob }) {
       {job.status === 'completed' && (
         <div className="space-y-4 p-4">
           {output && (
-            <video className="aspect-video w-full max-w-3xl rounded-lg bg-black object-contain" controls preload="metadata" src={artifactUrl(output)} />
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">{outputLabel}</p>
+              <video className="aspect-video w-full max-w-3xl rounded-lg bg-black object-contain" controls preload="metadata" src={artifactUrl(output)} />
+            </div>
           )}
 
           {summaryItems.length > 0 && (
@@ -279,7 +297,7 @@ function JobCard({ job }: { job: AnalyticsJob }) {
 
           <div className="flex flex-wrap gap-2">
             {Object.entries(job.artifacts)
-              .filter(([key]) => key !== 'annotated_video')
+              .filter(([, artifact]) => artifact.url !== output?.url)
               .map(([key, artifact]) => (
                 <a
                   key={key}
@@ -296,6 +314,10 @@ function JobCard({ job }: { job: AnalyticsJob }) {
       )}
     </article>
   )
+}
+
+function formatMetric(value: unknown): string | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : undefined
 }
 
 function JobStatus({ status }: { status: AnalyticsJob['status'] }) {

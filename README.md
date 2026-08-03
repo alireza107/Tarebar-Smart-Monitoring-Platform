@@ -182,7 +182,8 @@ Scope enforcement (own field / own market only) is applied in the service layer.
 
 Recorded-video jobs are sent directly from the browser to the separately
 running video analytics API. Generated videos, CSV files, event logs, and
-heatmaps remain in the CV repository's `outputs/jobs` directory.
+heatmaps remain in the Video Analytics repository's `output/dashboard/<job-id>`
+directory, isolated in one folder per dashboard processing job.
 
 All routes return `{ data: ... }` on success. Errors use consistent codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
