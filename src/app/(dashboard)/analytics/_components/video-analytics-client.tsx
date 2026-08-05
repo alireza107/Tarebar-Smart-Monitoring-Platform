@@ -70,6 +70,7 @@ type AnalyticsJob = {
   created_at: string
   updated_at: string
   max_frames: number | null
+  enable_reid: boolean
   error: string | null
   summary: Record<string, unknown> | null
   artifacts: Record<string, Artifact>
@@ -99,7 +100,7 @@ function artifactUrl(artifact: Artifact): string {
   return `${API_BASE}${artifact.url}`
 }
 
-export function VideoAnalyticsClient() {
+export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean }) {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [selectedApplication, setSelectedApplication] = useState('people_counting')
@@ -229,6 +230,25 @@ export function VideoAnalyticsClient() {
               برای مناطق محدود، صف پیکربندی‌شده، خطوط شمارش و کالیبراسیون از YAML استفاده می‌شود.
             </p>
           </div>
+
+          {canEnableReid && selectedApplication !== 'detection' && (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 lg:col-span-2">
+              <label htmlFor="enable_reid" className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-amber-900">
+                <input
+                  id="enable_reid"
+                  name="enable_reid"
+                  type="checkbox"
+                  value="true"
+                  className="size-4 rounded border-amber-400"
+                />
+                فعال‌سازی بازشناسی ظاهری OSNet (فقط مدیر سازمان)
+              </label>
+              <p className="text-xs leading-6 text-amber-800">
+                پیوستگی شناسه افراد پس از پوشیدگی یا خروج کوتاه از تصویر را بهتر می‌کند، اما برای هر فرد
+                پردازش بیشتری انجام می‌دهد و سرعت تحلیل را کاهش می‌دهد. حالت پیش‌فرض خاموش است.
+              </p>
+            </div>
+          )}
         </div>
 
         {createJob.error && <p className="text-sm text-red-600">{createJob.error.message}</p>}
@@ -299,7 +319,10 @@ function JobCard({
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{job.application.name} · {job.camera_id}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {job.application.name} · {job.camera_id}
+              {job.enable_reid ? ' · OSNet ReID فعال' : ''}
+            </p>
           </div>
         </button>
         <div className="flex items-center gap-2">
