@@ -18,6 +18,10 @@ interface PolygonEditorProps {
   onChange: (next: PolygonValue) => void
   /** Optional camera snapshot rendered behind the polygons. */
   backgroundUrl?: string | null
+  /** Match the source frame so normalized points are not affected by cropping. */
+  aspectRatio?: number
+  /** Restricted-area analytics currently accepts one polygon without holes. */
+  allowExclusions?: boolean
 }
 
 type Target = { ring: 'main' } | { ring: 'exclusion'; index: number }
@@ -41,7 +45,13 @@ function area(ring: Point[]): number {
   return Math.abs(s / 2)
 }
 
-export function PolygonEditor({ value, onChange, backgroundUrl }: PolygonEditorProps) {
+export function PolygonEditor({
+  value,
+  onChange,
+  backgroundUrl,
+  aspectRatio = 16 / 9,
+  allowExclusions = true,
+}: PolygonEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [target, setTarget] = useState<Target>({ ring: 'main' })
   const dragRef = useRef<{ ring: Target; index: number } | null>(null)
@@ -134,7 +144,7 @@ export function PolygonEditor({ value, onChange, backgroundUrl }: PolygonEditorP
         >
           <Square /> چندضلعی اصلی
         </Button>
-        {value.exclusionPolygons.map((_, i) => (
+        {allowExclusions && value.exclusionPolygons.map((_, i) => (
           <Button
             key={i}
             type="button"
@@ -145,9 +155,11 @@ export function PolygonEditor({ value, onChange, backgroundUrl }: PolygonEditorP
             <Scissors /> استثناء {i + 1}
           </Button>
         ))}
-        <Button type="button" size="sm" variant="outline" onClick={addExclusion}>
-          <Plus /> ناحیه استثناء
-        </Button>
+        {allowExclusions && (
+          <Button type="button" size="sm" variant="outline" onClick={addExclusion}>
+            <Plus /> ناحیه استثناء
+          </Button>
+        )}
         <div className="mr-auto flex items-center gap-2">
           <Button type="button" size="sm" variant="ghost" onClick={undoLastPoint}>
             <Undo2 /> واگرد نقطه
@@ -159,17 +171,18 @@ export function PolygonEditor({ value, onChange, backgroundUrl }: PolygonEditorP
       </div>
 
       {/* Canvas */}
-      <div className="relative w-full overflow-hidden rounded-lg border border-input bg-muted/40" style={{ aspectRatio: '16 / 9' }}>
+      <div className="relative w-full overflow-hidden rounded-lg border border-input bg-muted/40" style={{ aspectRatio }}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VW} ${VH}`}
+          preserveAspectRatio="none"
           className="absolute inset-0 h-full w-full touch-none select-none"
           onPointerDown={handleBackgroundPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
         >
           {backgroundUrl && (
-            <image href={backgroundUrl} x={0} y={0} width={VW} height={VH} preserveAspectRatio="xMidYMid slice" />
+            <image href={backgroundUrl} x={0} y={0} width={VW} height={VH} preserveAspectRatio="none" />
           )}
           {!backgroundUrl && <GridBackground />}
 

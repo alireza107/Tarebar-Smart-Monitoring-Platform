@@ -18,6 +18,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  PolygonEditor,
+  type PolygonValue,
+} from '@/app/(dashboard)/regions/_components/polygon-editor'
+import { buildRestrictedAreaCameraYaml } from './restricted-area-config'
 
 const API_BASE = (
   process.env.NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL ?? 'http://localhost:8000'
@@ -108,11 +113,100 @@ function artifactUrl(artifact: Artifact): string {
   return `${API_BASE}${artifact.url}`
 }
 
+type ExtractedFrame = {
+  dataUrl: string
+  aspectRatio: number
+}
+
+function extractFirstVideoFrame(file: File): Promise<ExtractedFrame> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const video = document.createElement('video')
+
+    function cleanup() {
+      video.onloadeddata = null
+      video.onerror = null
+      URL.revokeObjectURL(objectUrl)
+      video.removeAttribute('src')
+      video.load()
+    }
+
+    video.preload = 'auto'
+    video.muted = true
+    video.playsInline = true
+    video.onloadeddata = () => {
+      if (!video.videoWidth || !video.videoHeight) {
+        cleanup()
+        reject(new Error('ابعاد فریم ویدیو قابل خواندن نیست.'))
+        return
+      }
+      const width = Math.min(video.videoWidth, 1600)
+      const height = Math.max(1, Math.round(width / (video.videoWidth / video.videoHeight)))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) {
+        cleanup()
+        reject(new Error('امکان خواندن فریم ویدیو وجود ندارد.'))
+        return
+      }
+      context.drawImage(video, 0, 0, width, height)
+      const result = {
+        dataUrl: canvas.toDataURL('image/jpeg', 0.88),
+        aspectRatio: video.videoWidth / video.videoHeight,
+      }
+      cleanup()
+      resolve(result)
+    }
+    video.onerror = () => {
+      cleanup()
+      reject(new Error('مرورگر نتوانست فریم اول این ویدیو را باز کند.'))
+    }
+    video.src = objectUrl
+    video.load()
+  })
+}
+
+const EMPTY_RESTRICTED_AREA: PolygonValue = {
+  mainPolygon: [],
+  exclusionPolygons: [],
+}
+
 export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean }) {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [selectedApplication, setSelectedApplication] = useState('people_counting')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [firstFrame, setFirstFrame] = useState<ExtractedFrame | null>(null)
+  const [isExtractingFrame, setIsExtractingFrame] = useState(false)
+  const [frameError, setFrameError] = useState<string | null>(null)
+  const [restrictedArea, setRestrictedArea] = useState<PolygonValue>(EMPTY_RESTRICTED_AREA)
+  const [configurationError, setConfigurationError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setFirstFrame(null)
+    setFrameError(null)
+    setRestrictedArea(EMPTY_RESTRICTED_AREA)
+    setIsExtractingFrame(false)
+    if (!videoFile) return () => { active = false }
+
+    setIsExtractingFrame(true)
+    extractFirstVideoFrame(videoFile)
+      .then(frame => {
+        if (active) setFirstFrame(frame)
+      })
+      .catch(error => {
+        if (active) setFrameError(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => {
+        if (active) setIsExtractingFrame(false)
+      })
+
+    return () => { active = false }
+  }, [videoFile])
 
   const applicationsQuery = useQuery<{ data: Application[] }>({
     queryKey: ['video-analytics-applications'],
@@ -140,6 +234,10 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
     onSuccess: response => {
       formRef.current?.reset()
       setSelectedApplication('people_counting')
+      setVideoFile(null)
+      setFirstFrame(null)
+      setRestrictedArea(EMPTY_RESTRICTED_AREA)
+      setConfigurationError(null)
       queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
       setSelectedJobId(response.data.id)
     },
@@ -150,6 +248,32 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
     const data = new FormData(event.currentTarget)
     data.set('application_id', selectedApplication)
     if (!data.get('max_frames')) data.delete('max_frames')
+    setConfigurationError(null)
+
+    if (selectedApplication === 'restricted_area') {
+      if (isExtractingFrame || !firstFrame) {
+        setConfigurationError('ابتدا منتظر بمانید تا فریم اول ویدیو آماده شود.')
+        return
+      }
+      if (restrictedArea.mainPolygon.length < 3) {
+        setConfigurationError('ناحیه محدود باید حداقل سه رأس داشته باشد.')
+        return
+      }
+      try {
+        const cameraId = String(data.get('camera_id') ?? '')
+        const yaml = buildRestrictedAreaCameraYaml({
+          cameraId,
+          points: restrictedArea.mainPolygon,
+        })
+        data.set(
+          'camera_config',
+          new File([yaml], 'camera.yaml', { type: 'application/yaml' }),
+        )
+      } catch (error) {
+        setConfigurationError(error instanceof Error ? error.message : String(error))
+        return
+      }
+    }
     createJob.mutate(data)
   }
 
@@ -179,7 +303,14 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="video">فایل ویدیو</Label>
-            <Input id="video" name="video" type="file" accept="video/*,.mkv,.avi" required />
+            <Input
+              id="video"
+              name="video"
+              type="file"
+              accept="video/*,.mkv,.avi"
+              required
+              onChange={event => setVideoFile(event.target.files?.[0] ?? null)}
+            />
             <p className="text-xs text-muted-foreground">MP4، MOV، AVI، MKV، WebM یا M4V؛ حداکثر پیش‌فرض ۱ گیگابایت</p>
           </div>
 
@@ -223,6 +354,36 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
             )}
           </div>
 
+          {selectedApplication === 'restricted_area' && (
+            <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 lg:col-span-2">
+              <div>
+                <Label>ناحیه محدود روی فریم اول</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  حداقل سه نقطه روی تصویر انتخاب کنید. مقادیر نرمال‌شده به‌صورت خودکار به ماژول تشخیص ارسال می‌شود.
+                </p>
+              </div>
+              {isExtractingFrame && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> در حال استخراج فریم اول…
+                </div>
+              )}
+              {frameError && <p className="text-sm text-red-600">{frameError}</p>}
+              {firstFrame && (
+                <PolygonEditor
+                  value={restrictedArea}
+                  onChange={setRestrictedArea}
+                  backgroundUrl={firstFrame.dataUrl}
+                  aspectRatio={firstFrame.aspectRatio}
+                  allowExclusions={false}
+                />
+              )}
+              {!videoFile && (
+                <p className="text-sm text-muted-foreground">برای نمایش فریم اول، یک فایل ویدیو انتخاب کنید.</p>
+              )}
+            </div>
+          )}
+
+          {selectedApplication !== 'restricted_area' && (
           <div className="space-y-1.5 lg:col-span-2">
             <Label htmlFor="camera_config">
               تنظیمات دوربین YAML {selected?.requires_camera_config ? '(الزامی برای این برنامه)' : '(اختیاری)'}
@@ -238,6 +399,7 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
               برای مناطق محدود، صف پیکربندی‌شده، خطوط شمارش و کالیبراسیون از YAML استفاده می‌شود.
             </p>
           </div>
+          )}
 
           {canEnableReid && selectedApplication !== 'detection' && (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 lg:col-span-2">
@@ -259,6 +421,7 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
           )}
         </div>
 
+        {configurationError && <p className="text-sm text-red-600">{configurationError}</p>}
         {createJob.error && <p className="text-sm text-red-600">{createJob.error.message}</p>}
 
         <div className="flex justify-end">
