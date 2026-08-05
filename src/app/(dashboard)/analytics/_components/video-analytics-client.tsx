@@ -41,6 +41,14 @@ type MetricDefinition = {
   availability: 'live' | 'final' | 'both'
 }
 
+type CrowdedRegionMetric = {
+  region_id: number
+  row: number
+  column: number
+  normalized_bounds: [number, number, number, number]
+  average_occupancy: number
+}
+
 type LiveEvent = {
   type: string
   job_id: string
@@ -481,6 +489,9 @@ function DynamicMetrics({
 
 function MetricWidget({ definition, value, history }: { definition: MetricDefinition; value: unknown; history: number[] }) {
   if (value === undefined || value === null) return null
+  if (definition.key === 'top_crowded_regions') {
+    return <CrowdedRegionsWidget label={definition.label} value={value} />
+  }
   if (definition.display === 'table' && typeof value === 'object' && !Array.isArray(value)) {
     return (
       <div className="rounded-lg border bg-muted/20 p-3 sm:col-span-2">
@@ -498,6 +509,110 @@ function MetricWidget({ definition, value, history }: { definition: MetricDefini
       {definition.display === 'chart' && history.length > 1 && <Sparkline values={history} />}
     </div>
   )
+}
+
+function CrowdedRegionsWidget({ label, value }: { label: string; value: unknown }) {
+  const regions = parseCrowdedRegions(value)
+  if (regions.length === 0) return null
+  const ranks = new Map(regions.map((region, index) => [region.region_id, index + 1]))
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 sm:col-span-2 lg:col-span-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            شماره ناحیه‌ها با برچسب‌های روی ویدیوی نقشه حرارتی یکسان است.
+          </p>
+        </div>
+        <div className="flex gap-2 text-[11px]" dir="ltr">
+          <span className="rounded bg-red-500 px-2 py-1 font-semibold text-white">TOP 1</span>
+          <span className="rounded bg-orange-500 px-2 py-1 font-semibold text-white">TOP 2</span>
+          <span className="rounded bg-yellow-400 px-2 py-1 font-semibold text-slate-950">TOP 3</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(280px,1.25fr)_minmax(260px,1fr)]">
+        <div className="grid grid-cols-4 overflow-hidden rounded-lg border-2 border-slate-300 bg-slate-950" dir="ltr">
+          {Array.from({ length: 12 }, (_, index) => {
+            const regionId = index + 1
+            const rank = ranks.get(regionId)
+            return (
+              <div
+                key={regionId}
+                className={`relative flex aspect-[4/3] items-center justify-center border border-white/50 text-sm font-bold ${crowdedRegionCellClass(rank)}`}
+                title={`Region ${regionId}${rank ? ` · Top ${rank}` : ''}`}
+              >
+                R{regionId}
+                {rank && (
+                  <span className="absolute end-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                    #{rank}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="space-y-2" dir="ltr">
+          {regions.map((region, index) => (
+            <div key={region.region_id} className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+              <div className="flex items-center gap-3">
+                <span className={`flex size-8 items-center justify-center rounded-md text-sm font-bold ${crowdedRegionBadgeClass(index + 1)}`}>
+                  #{index + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Region {region.region_id}</p>
+                  <p className="text-xs text-muted-foreground">Row {region.row}, column {region.column}</p>
+                </div>
+              </div>
+              <div className="text-end">
+                <p className="text-base font-bold">{region.average_occupancy.toFixed(2)}</p>
+                <p className="text-[11px] text-muted-foreground">average occupancy</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function parseCrowdedRegions(value: unknown): CrowdedRegionMetric[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const bounds = record.normalized_bounds
+    if (
+      typeof record.region_id !== 'number' ||
+      typeof record.row !== 'number' ||
+      typeof record.column !== 'number' ||
+      typeof record.average_occupancy !== 'number' ||
+      !Array.isArray(bounds) ||
+      bounds.length !== 4 ||
+      !bounds.every(bound => typeof bound === 'number')
+    ) return []
+    return [{
+      region_id: record.region_id,
+      row: record.row,
+      column: record.column,
+      normalized_bounds: bounds as [number, number, number, number],
+      average_occupancy: record.average_occupancy,
+    }]
+  }).slice(0, 3)
+}
+
+function crowdedRegionCellClass(rank: number | undefined) {
+  if (rank === 1) return 'bg-red-500/80 text-white ring-4 ring-inset ring-red-200'
+  if (rank === 2) return 'bg-orange-500/80 text-white ring-4 ring-inset ring-orange-200'
+  if (rank === 3) return 'bg-yellow-400/85 text-slate-950 ring-4 ring-inset ring-yellow-100'
+  return 'bg-slate-800/80 text-white/80'
+}
+
+function crowdedRegionBadgeClass(rank: number) {
+  if (rank === 1) return 'bg-red-500 text-white'
+  if (rank === 2) return 'bg-orange-500 text-white'
+  return 'bg-yellow-400 text-slate-950'
 }
 
 function Sparkline({ values }: { values: number[] }) {
