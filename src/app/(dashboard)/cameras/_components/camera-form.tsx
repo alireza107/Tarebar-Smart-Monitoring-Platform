@@ -63,9 +63,12 @@ export function CameraForm({ defaultValues, onSubmit, onCancel, isPending, submi
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="streamUrl">آدرس استریم (اختیاری)</Label>
-        <Input id="streamUrl" {...register('streamUrl')} placeholder="rtsp://..." dir="ltr" />
+        <Label htmlFor="streamUrl">آدرس RTSP پردازش (اختیاری)</Label>
+        <Input id="streamUrl" {...register('streamUrl')} placeholder="rtsp://mediamtx:8554/mobile-1" dir="ltr" />
         {errors.streamUrl && <p className="text-sm text-red-500">{errors.streamUrl.message}</p>}
+        <p className="text-xs text-muted-foreground">
+          برای Larix مسیر MediaMTX را وارد کنید؛ همین آدرس بدون تغییر به سرویس تحلیل تصویر داده می‌شود.
+        </p>
       </div>
 
       <div className="space-y-1">

@@ -1,14 +1,96 @@
-// Browser-playable stream URL derivation.
-//
-// Browsers cannot play an rtsp:// URL in a <video> element. MediaMTX (the common
-// rtsp-simple-server, default RTSP port 8554) re-publishes the same stream over
-// HLS on port 8888 at `http://<host>:8888/<path>/index.m3u8`. We derive that HLS
-// URL from the stored RTSP stream URL so the monitoring page can play it with hls.js.
-//
-// This module is pure and dependency-free so it is safe to import on the client.
+// Browser playback URLs derived from the normalized RTSP camera contract.
+// The RTSP host is often a Docker-only hostname, therefore public WebRTC/HLS
+// bases are environment-driven instead of being inferred from that host.
 
-// Default HLS port exposed by MediaMTX.
-const MEDIAMTX_HLS_PORT = 8888
+const DEFAULT_WEBRTC_PORT = 8889
+const DEFAULT_HLS_PORT = 8888
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '')
+}
+
+function mediaMtxBase(
+  configured: string | undefined,
+  streamUrl: URL,
+  port: number,
+): string {
+  if (configured) return trimTrailingSlash(configured)
+  const protocol = streamUrl.protocol === 'rtsps:' ? 'https:' : 'http:'
+  return `${protocol}//${streamUrl.hostname}:${port}`
+}
+
+export interface CameraPlaybackUrls {
+  whep: string
+  hls: string
+}
+
+/** Return the path inside MediaMTX, without a leading or trailing slash. */
+export function streamPath(streamUrl: string | null | undefined): string | null {
+  if (!streamUrl) return null
+  try {
+    const parsed = new URL(streamUrl)
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, '')
+    return path || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolve low-latency WebRTC/WHEP and fallback HLS URLs for an RTSP URL.
+ * Public bases let browser traffic use a LAN/public host while backend and CV
+ * containers keep using `rtsp://mediamtx:8554/<path>`.
+ */
+export function derivePlaybackUrls(
+  streamUrl: string | null | undefined,
+): CameraPlaybackUrls | null {
+  if (!streamUrl) return null
+  try {
+    const parsed = new URL(streamUrl)
+    if (parsed.protocol !== 'rtsp:' && parsed.protocol !== 'rtsps:') return null
+    const path = streamPath(streamUrl)
+    if (!path) return null
+    const webrtcBase = mediaMtxBase(
+      process.env.NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL,
+      parsed,
+      DEFAULT_WEBRTC_PORT,
+    )
+    const hlsBase = mediaMtxBase(
+      process.env.NEXT_PUBLIC_MEDIAMTX_HLS_URL,
+      parsed,
+      DEFAULT_HLS_PORT,
+    )
+    return {
+      whep: `${webrtcBase}/${path}/whep`,
+      hls: `${hlsBase}/${path}/index.m3u8`,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Translate a locally-addressed MediaMTX URL to the Docker-internal base used
+ * by the analytics service. Real camera RTSP URLs are returned unchanged.
+ */
+export function deriveAnalyticsRtspUrl(streamUrl: string): string {
+  try {
+    const parsed = new URL(streamUrl)
+    const isLocalMediaMtx =
+      parsed.protocol === 'rtsp:' &&
+      (parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === 'mediamtx') &&
+      (parsed.port === '8554' || parsed.port === '')
+    const internalBase = process.env.MEDIAMTX_RTSP_URL?.replace(/\/+$/, '')
+    const path = streamPath(streamUrl)
+    return isLocalMediaMtx && internalBase && path
+      ? `${internalBase}/${path}`
+      : streamUrl
+  } catch {
+    return streamUrl
+  }
+}
 
 /**
  * Derive a browser-playable HLS (.m3u8) URL from a camera stream URL.
@@ -31,9 +113,7 @@ export function deriveHlsUrl(streamUrl: string | null | undefined): string | nul
     }
 
     if (url.protocol === 'rtsp:' || url.protocol === 'rtsps:') {
-      const path = url.pathname.replace(/^\/+|\/+$/g, '')
-      if (!path) return null
-      return `http://${url.hostname}:${MEDIAMTX_HLS_PORT}/${path}/index.m3u8`
+      return derivePlaybackUrls(streamUrl)?.hls ?? null
     }
 
     return null

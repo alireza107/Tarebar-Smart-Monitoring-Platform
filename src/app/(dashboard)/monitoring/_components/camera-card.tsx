@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Camera, MapPin, ExternalLink, VideoOff, Play } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { BrainCircuit, Camera, MapPin, ExternalLink, VideoOff, Play } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { CameraStreamPlayer } from './camera-stream-player'
 import { CameraSnapshot } from './camera-snapshot'
-import { deriveHlsUrl } from '@/modules/camera/stream'
+import { derivePlaybackUrls } from '@/modules/camera/stream'
 import type { Camera as CameraType } from '@/modules/camera/types'
 
 const STATUS_CONFIG: Record<
@@ -54,14 +56,29 @@ export function CameraCard({ camera }: CameraCardProps) {
   const status = STATUS_CONFIG[camera.status] ?? STATUS_CONFIG.UNKNOWN
   const isOnline = camera.status === 'ONLINE'
 
-  const hlsUrl = deriveHlsUrl(camera.streamUrl)
+  const playbackUrls = derivePlaybackUrls(camera.streamUrl)
   // Only an online camera with a playable stream can be opened in the viewer.
-  const canPlay = isOnline && !!hlsUrl
+  const canPlay = isOnline && !!playbackUrls
+  const startAnalytics = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/cameras/${camera.id}/analytics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // At the default 30 FPS / stride 10 this is roughly a ten-minute live
+        // session and prevents one accidental click from occupying the single
+        // analytics worker and growing an output file forever.
+        body: JSON.stringify({ applicationId: 'people_counting', maxFrames: 1_800 }),
+      })
+      if (!response.ok) throw new Error('سرویس تحلیل تصویر در دسترس نیست')
+    },
+    onSuccess: () => toast.success('تحلیل زنده دوربین شروع شد'),
+    onError: (error: Error) => toast.error(error.message),
+  })
 
   const PreviewInner = (
     <>
       {/* Last frame grabbed from the live stream, behind the overlays */}
-      {canPlay && hlsUrl && <CameraSnapshot src={hlsUrl} />}
+      {canPlay && playbackUrls && <CameraSnapshot src={playbackUrls.hls} />}
 
       {/* Scanline texture */}
       <div
@@ -163,10 +180,21 @@ export function CameraCard({ camera }: CameraCardProps) {
         {!camera.streamUrl && (
           <p className="text-[10px] text-muted-foreground/50 select-none">بدون آدرس استریم</p>
         )}
+        {canPlay && (
+          <button
+            type="button"
+            disabled={startAnalytics.isPending}
+            onClick={() => startAnalytics.mutate()}
+            className="mt-1 flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
+            {startAnalytics.isPending ? 'در حال اتصال…' : 'شروع تحلیل زنده'}
+          </button>
+        )}
       </div>
 
       {/* Live stream viewer */}
-      {canPlay && hlsUrl && (
+      {canPlay && playbackUrls && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-2xl lg:max-w-3xl">
             <DialogHeader>
@@ -175,7 +203,12 @@ export function CameraCard({ camera }: CameraCardProps) {
                 {locationLabel(camera)} · پخش زنده
               </DialogDescription>
             </DialogHeader>
-            {open && <CameraStreamPlayer src={hlsUrl} />}
+            {open && (
+              <CameraStreamPlayer
+                whepSrc={playbackUrls.whep}
+                hlsSrc={playbackUrls.hls}
+              />
+            )}
           </DialogContent>
         </Dialog>
       )}

@@ -17,7 +17,13 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL: ${NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL: ${NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL:-http://localhost:8889}
+        NEXT_PUBLIC_MEDIAMTX_HLS_URL: ${NEXT_PUBLIC_MEDIAMTX_HLS_URL:-http://localhost:8888}
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -26,9 +32,53 @@ services:
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL: ${NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL:-http://localhost:8889}
+      NEXT_PUBLIC_MEDIAMTX_HLS_URL: ${NEXT_PUBLIC_MEDIAMTX_HLS_URL:-http://localhost:8888}
+      MEDIAMTX_RTSP_URL: rtsp://mediamtx:8554
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      VIDEO_ANALYTICS_API_URL: http://video-analytics:8000
     depends_on:
       db:
         condition: service_healthy
+      mediamtx:
+        condition: service_started
+      video-analytics:
+        condition: service_started
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.18.2
+    restart: unless-stopped
+    ports:
+      - "1935:1935"       # RTMP ingest (Larix)
+      - "8554:8554"       # RTSP ingest/read (CV pipeline)
+      - "8888:8888"       # Low-latency HLS fallback
+      - "8889:8889"       # WebRTC HTTP/WHEP signaling
+      - "8189:8189/udp"   # WebRTC ICE media
+      - "127.0.0.1:9997:9997" # Control API; backend uses the Docker network
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${MEDIAMTX_WEBRTC_HOST:-localhost}
+    volumes:
+      - ./infrastructure/mediamtx.yml:/mediamtx.yml:ro
+
+  video-analytics:
+    build:
+      context: ../video_analytics
+    image: video-analytics-mvp:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${VIDEO_ANALYTICS_PORT:-8000}:8000"
+    environment:
+      VIDEO_ANALYTICS_CORS_ORIGINS: ${VIDEO_ANALYTICS_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      VIDEO_ANALYTICS_JOB_WORKERS: ${VIDEO_ANALYTICS_JOB_WORKERS:-1}
+      VIDEO_ANALYTICS_PROCESSING_WIDTH: ${VIDEO_ANALYTICS_PROCESSING_WIDTH:-1280}
+      VIDEO_ANALYTICS_FRAME_STRIDE: ${VIDEO_ANALYTICS_FRAME_STRIDE:-10}
+    volumes:
+      - analytics-jobs:/app/output/dashboard
+    depends_on:
+      mediamtx:
+        condition: service_started
 
 volumes:
   pgdata:
+  analytics-jobs:

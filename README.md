@@ -69,9 +69,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-To use **Video Analytics** (`/analytics`), also start the FastAPI service from
-the sibling `video_analytics_mvp` repository on port 8000. The dashboard reads
-its address from `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL`.
+The compose stack also runs MediaMTX and the sibling FastAPI video analytics
+service. See [Live-Cameras-MediaMTX.md](docs/Live-Cameras-MediaMTX.md) for Larix,
+WebRTC, RTSP/IP-camera, firewall, and live-CV setup.
 
 ---
 
@@ -94,7 +94,8 @@ its address from `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL`.
 
 ## Production — Docker Compose
 
-The included `docker-compose.yml` runs both the Next.js app and PostgreSQL in containers.
+The included `docker-compose.yml` runs Next.js, PostgreSQL, MediaMTX, and the
+video analytics API in containers.
 
 ```bash
 # Build and start all services

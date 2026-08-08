@@ -1,0 +1,35 @@
+# MediaMTX is the protocol gateway for every live camera source.
+#
+# Mobile publishers (Larix) push RTMP/RTSP to a named path. The dashboard reads
+# the same path with WebRTC (WHEP), while the CV service always reads it through
+# RTSP. Future IP cameras can either publish to a path or be proxied by adding a
+# path with an RTSP `source` through the MediaMTX Control API.
+logLevel: info
+
+api: true
+apiAddress: :9997
+
+rtsp: true
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+rtmp: true
+rtmpAddress: :1935
+
+hls: true
+hlsAddress: :8888
+hlsAllowOrigins: ['*']
+hlsVariant: lowLatency
+
+webrtc: true
+webrtcAddress: :8889
+webrtcAllowOrigins: ['*']
+webrtcLocalUDPAddress: :8189
+
+pathDefaults:
+  source: publisher
+  overridePublisher: true
+
+paths:
+  all_others:
+

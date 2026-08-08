@@ -4,6 +4,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import type { Role } from '@/lib/permissions'
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -48,7 +49,7 @@ const config: NextAuthConfig = {
     },
     session({ session, token }) {
       session.user.id = token.id as string
-      session.user.role = token.role as string
+      session.user.role = token.role as Role
       return session
     },
   },
