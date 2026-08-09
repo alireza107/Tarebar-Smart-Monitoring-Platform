@@ -25,4 +25,16 @@ export interface ReportsData {
   cameraStatus: CameraStatusSummary
   camerasByField: CamerasByFieldRow[]
   boothsByMarket: BoothsByMarketRow[]
+  restrictedAreaEvents: RestrictedAreaEvent[]
+}
+
+export interface RestrictedAreaEvent {
+  event_id: string
+  event_type: 'restricted_area_entered' | 'restricted_area_exited'
+  camera_id: string
+  camera_name: string
+  timestamp: number
+  track_id: number | null
+  zone_id: string | null
+  payload: Record<string, unknown> | null
 }

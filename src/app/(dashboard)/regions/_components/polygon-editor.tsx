@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Plus, Eraser, Undo2, Square, Scissors } from 'lucide-react'
 import type { Point } from '@/modules/region/geometry'
@@ -18,6 +18,8 @@ interface PolygonEditorProps {
   onChange: (next: PolygonValue) => void
   /** Optional camera snapshot rendered behind the polygons. */
   backgroundUrl?: string | null
+  /** Optional live camera player rendered behind the polygons. */
+  backgroundContent?: ReactNode
   /** Match the source frame so normalized points are not affected by cropping. */
   aspectRatio?: number
   /** Restricted-area analytics currently accepts one polygon without holes. */
@@ -49,6 +51,7 @@ export function PolygonEditor({
   value,
   onChange,
   backgroundUrl,
+  backgroundContent,
   aspectRatio = 16 / 9,
   allowExclusions = true,
 }: PolygonEditorProps) {
@@ -172,6 +175,11 @@ export function PolygonEditor({
 
       {/* Canvas */}
       <div className="relative w-full overflow-hidden rounded-lg border border-input bg-muted/40" style={{ aspectRatio }}>
+        {backgroundContent && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-black [&>div]:h-full [&>div]:aspect-auto [&_video]:object-contain">
+            {backgroundContent}
+          </div>
+        )}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VW} ${VH}`}
@@ -184,7 +192,7 @@ export function PolygonEditor({
           {backgroundUrl && (
             <image href={backgroundUrl} x={0} y={0} width={VW} height={VH} preserveAspectRatio="none" />
           )}
-          {!backgroundUrl && <GridBackground />}
+          {!backgroundUrl && !backgroundContent && <GridBackground />}
 
           {/* Main polygon */}
           {value.mainPolygon.length > 0 && (

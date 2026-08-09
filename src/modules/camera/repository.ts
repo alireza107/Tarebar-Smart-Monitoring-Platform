@@ -5,6 +5,7 @@ const include = {
   field:  { select: { id: true, name: true } },
   market: { select: { id: true, name: true } },
   booth:  { select: { id: true, number: true } },
+  _count: { select: { regions: { where: { deletedAt: null } } } },
 } as const
 
 export const cameraRepository = {

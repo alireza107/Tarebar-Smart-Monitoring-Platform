@@ -56,26 +56,38 @@ then falls back to HLS, and offers a manual reconnect if both fail.
 
 ## Live AI/CV processing
 
-For an online camera, click **Start live analysis** on its monitoring card.
-The authenticated Next.js route reads the camera's stored RTSP URL and creates
-a `people_counting` stream job in the FastAPI service. Job state, live preview,
-metrics, cancellation, and artifacts use the existing Analytics page. The card
-starts a bounded 1,800-processed-frame session (about ten minutes at the default
-30 FPS source and frame stride 10) so one click cannot occupy the only worker
-or grow an artifact indefinitely; it can be started again when needed.
+For an online camera, click **Select live analysis** on its monitoring card.
+Choose human detection, tracking, people counting, movement/dwell heatmap, or
+automatic vertical-queue analysis. The authenticated Next.js route reads the
+camera's stored RTSP URL and creates the selected stream job in the FastAPI
+service. Job state, processed live preview, metrics, cancellation, and artifacts
+use the existing Analytics page. One task is run per camera-card request so the
+preview and metrics have a clear owner. The card starts a bounded
+1,800-processed-frame session (about ten minutes at the default 30 FPS source
+and frame stride 10) so one click cannot occupy the only worker or grow an
+artifact indefinitely; it can be started again when needed.
 
-The FastAPI endpoint can also be used directly:
+Restricted-area and configured-queue analytics are not shown as live choices
+until camera-specific polygons and service points are stored. The stream API
+rejects these geometry-dependent presets when no camera YAML is available.
+
+The FastAPI endpoint can also run several live analytics in one shared pipeline.
+Detection and tracking run once, and the selected modules reuse their results:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/stream-jobs \
   -H 'Content-Type: application/json' \
   -d '{
     "stream_url":"rtsp://mediamtx:8554/mobile-1",
-    "application_id":"people_counting",
+    "application_ids":["people_counting","heatmap","vertical_queue"],
     "camera_id":"mobile-1",
     "max_frames":1000
   }'
 ```
+
+`application_ids` accepts one or more of `people_counting`, `heatmap`, and
+`vertical_queue`. The older singular `application_id` contract remains
+available for compatibility, but the two fields must not be sent together.
 
 Omit `max_frames` for a job that runs until cancelled or until the source ends.
 Configured analytics that need polygons still require camera YAML and are not

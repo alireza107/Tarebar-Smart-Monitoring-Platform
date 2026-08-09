@@ -9,6 +9,8 @@ interface CameraStreamPlayerProps {
   whepSrc: string
   /** MediaMTX HLS playlist used when WebRTC cannot connect. */
   hlsSrc: string
+  /** Hide native controls and transport badge when used as a drawing background. */
+  chrome?: boolean
 }
 
 type PlayerState = 'connecting' | 'webrtc' | 'hls' | 'error'
@@ -31,7 +33,7 @@ function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
  * WebRTC-first MediaMTX player with bounded reconnects and an HLS fallback.
  * WHEP is negotiated directly so player errors are visible to the dashboard.
  */
-export function CameraStreamPlayer({ whepSrc, hlsSrc }: CameraStreamPlayerProps) {
+export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true }: CameraStreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [state, setState] = useState<PlayerState>('connecting')
   const [attempt, setAttempt] = useState(0)
@@ -155,9 +157,9 @@ export function CameraStreamPlayer({ whepSrc, hlsSrc }: CameraStreamPlayerProps)
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-slate-950">
-      <video ref={videoRef} controls autoPlay muted playsInline className="h-full w-full object-contain" />
+      <video ref={videoRef} controls={chrome} autoPlay muted playsInline className="h-full w-full object-contain" />
 
-      {(state === 'webrtc' || state === 'hls') && (
+      {chrome && (state === 'webrtc' || state === 'hls') && (
         <span className="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
           {state === 'webrtc' ? 'WebRTC · کم‌تأخیر' : 'HLS · اتصال جایگزین'}
         </span>
@@ -174,9 +176,9 @@ export function CameraStreamPlayer({ whepSrc, hlsSrc }: CameraStreamPlayerProps)
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 text-white/50">
           <VideoOff className="h-9 w-9" />
           <span className="text-xs font-medium">استریم در دسترس نیست</span>
-          <button type="button" onClick={retry} className="flex items-center gap-1 rounded border border-white/20 px-3 py-1.5 text-xs hover:bg-white/10">
+          {chrome && <button type="button" onClick={retry} className="flex items-center gap-1 rounded border border-white/20 px-3 py-1.5 text-xs hover:bg-white/10">
             <RefreshCw className="h-3 w-3" /> تلاش دوباره
-          </button>
+          </button>}
         </div>
       )}
     </div>

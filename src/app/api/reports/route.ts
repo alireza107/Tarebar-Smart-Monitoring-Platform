@@ -5,6 +5,27 @@ import { checkPermission, PermissionError } from '@/lib/permissions'
 import type { Role } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { reportRepository } from '@/modules/report/repository'
+import { cameraService } from '@/modules/camera/service'
+
+async function withRestrictedEvents<T extends object>(base: T, userId: string, role: Role) {
+  const cameras = await cameraService.getAll(userId, role)
+  const allowed = new Map(cameras.map(camera => [camera.id, camera.name]))
+  const analyticsBase = (process.env.VIDEO_ANALYTICS_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
+  try {
+    const response = await fetch(`${analyticsBase}/api/v1/restricted-area-events?limit=200`, {
+      signal: AbortSignal.timeout(5_000),
+      cache: 'no-store',
+    })
+    if (!response.ok) return { ...base, restrictedAreaEvents: [] }
+    const body = await response.json() as { data?: Array<Record<string, unknown>> }
+    const restrictedAreaEvents = (body.data ?? [])
+      .filter(event => typeof event.camera_id === 'string' && allowed.has(event.camera_id))
+      .map(event => ({ ...event, camera_name: allowed.get(event.camera_id as string)! }))
+    return { ...base, restrictedAreaEvents }
+  } catch {
+    return { ...base, restrictedAreaEvents: [] }
+  }
+}
 
 export async function GET() {
   try {
@@ -30,7 +51,7 @@ export async function GET() {
         reportRepository.getBoothsByMarket(undefined, fieldIds),
       ])
 
-      return NextResponse.json({ data: { cameraStatus, camerasByField, boothsByMarket } })
+      return NextResponse.json({ data: await withRestrictedEvents({ cameraStatus, camerasByField, boothsByMarket }, userId, role) })
     }
 
     if (role === 'MARKET_MANAGER') {
@@ -43,7 +64,7 @@ export async function GET() {
         reportRepository.getBoothsByMarket(marketIds),
       ])
 
-      return NextResponse.json({ data: { cameraStatus, camerasByField: [], boothsByMarket } })
+      return NextResponse.json({ data: await withRestrictedEvents({ cameraStatus, camerasByField: [], boothsByMarket }, userId, role) })
     }
 
     // ORG_ADMIN
@@ -53,7 +74,7 @@ export async function GET() {
       reportRepository.getBoothsByMarket(),
     ])
 
-    return NextResponse.json({ data: { cameraStatus, camerasByField, boothsByMarket } })
+    return NextResponse.json({ data: await withRestrictedEvents({ cameraStatus, camerasByField, boothsByMarket }, userId, role) })
   } catch (e) {
     if (e instanceof PermissionError) return forbidden()
     return serverError()

@@ -23,6 +23,9 @@ import {
   type PolygonValue,
 } from '@/app/(dashboard)/regions/_components/polygon-editor'
 import { buildRestrictedAreaCameraYaml } from './restricted-area-config'
+import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
+import { derivePlaybackUrls } from '@/modules/camera/stream'
+import type { Camera as CameraType } from '@/modules/camera/types'
 
 const API_BASE = (
   process.env.NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL ?? 'http://localhost:8000'
@@ -89,7 +92,34 @@ type AnalyticsJob = {
   artifacts: Record<string, Artifact>
   live: LiveEvent | null
   preview_url: string | null
+  enabled_tasks: string[]
+  source_type: 'file' | 'rtsp'
 }
+
+const LIVE_TASKS = [
+  {
+    id: 'people_counting',
+    label: 'شمارش افراد',
+    description: 'تعداد فعلی، افراد یکتا، ورود و خروج',
+  },
+  {
+    id: 'heatmap',
+    label: 'نقشه حرارتی توقف و تراکم',
+    description: 'نمایش نقشه حرارتی و پرتراکم‌ترین بخش‌ها',
+  },
+  {
+    id: 'vertical_queue',
+    label: 'پایش خودکار صف',
+    description: 'طول صف، زمان انتظار و سرعت حرکت صف',
+  },
+  {
+    id: 'restricted_area',
+    label: 'ورود به ناحیه ممنوعه',
+    description: 'تشخیص زنده ورود و خروج از مناطق ثبت‌شده برای این دوربین',
+  },
+] as const
+
+type LiveTaskId = (typeof LIVE_TASKS)[number]['id']
 
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
@@ -173,7 +203,13 @@ const EMPTY_RESTRICTED_AREA: PolygonValue = {
   exclusionPolygons: [],
 }
 
-export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean }) {
+export function VideoAnalyticsClient({
+  canEnableReid,
+  mode = 'recorded',
+}: {
+  canEnableReid: boolean
+  mode?: 'recorded' | 'live'
+}) {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [selectedApplication, setSelectedApplication] = useState('people_counting')
@@ -184,6 +220,12 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
   const [frameError, setFrameError] = useState<string | null>(null)
   const [restrictedArea, setRestrictedArea] = useState<PolygonValue>(EMPTY_RESTRICTED_AREA)
   const [configurationError, setConfigurationError] = useState<string | null>(null)
+  const [selectedLiveCameraId, setSelectedLiveCameraId] = useState('')
+  const [selectedLiveApplications, setSelectedLiveApplications] = useState<LiveTaskId[]>([
+    'people_counting',
+    'heatmap',
+    'vertical_queue',
+  ])
 
   useEffect(() => {
     let active = true
@@ -213,6 +255,15 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
     queryFn: () => apiJson('/api/v1/applications'),
     retry: 1,
   })
+  const camerasQuery = useQuery<{ data: CameraType[] }>({
+    queryKey: ['video-analytics-cameras'],
+    queryFn: async () => {
+      const response = await fetch('/api/cameras')
+      if (!response.ok) throw new Error('خطا در دریافت دوربین‌ها')
+      return response.json()
+    },
+    retry: 1,
+  })
   const jobsQuery = useQuery<{ data: AnalyticsJob[] }>({
     queryKey: ['video-analytics-jobs'],
     queryFn: () => apiJson('/api/v1/jobs'),
@@ -228,6 +279,38 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
     [applicationsQuery.data, selectedApplication],
   )
 
+  const liveCameras = useMemo(
+    () => (camerasQuery.data?.data ?? []).filter(camera => Boolean(camera.streamUrl)),
+    [camerasQuery.data],
+  )
+  const selectedLiveCamera = useMemo(
+    () => liveCameras.find(camera => camera.id === selectedLiveCameraId) ?? liveCameras[0],
+    [liveCameras, selectedLiveCameraId],
+  )
+  const livePlaybackUrls = selectedLiveCamera
+    ? derivePlaybackUrls(selectedLiveCamera.streamUrl)
+    : null
+
+  useEffect(() => {
+    if (!selectedLiveCameraId && liveCameras[0]) setSelectedLiveCameraId(liveCameras[0].id)
+  }, [liveCameras, selectedLiveCameraId])
+
+  const selectedCameraHasRestrictedArea = Boolean(selectedLiveCamera?._count?.regions)
+  useEffect(() => {
+    if (selectedCameraHasRestrictedArea) {
+      setSelectedLiveApplications(current => current.includes('restricted_area')
+        ? current
+        : [...current, 'restricted_area'])
+    } else {
+      setSelectedLiveApplications(current => current.filter(id => id !== 'restricted_area'))
+    }
+  }, [selectedLiveCamera?.id, selectedCameraHasRestrictedArea])
+
+  const visibleJobs = useMemo(
+    () => (jobsQuery.data?.data ?? []).filter(job => mode === 'live' ? job.source_type === 'rtsp' : job.source_type !== 'rtsp'),
+    [jobsQuery.data, mode],
+  )
+
   const createJob = useMutation({
     mutationFn: (formData: FormData) =>
       apiJson<{ data: AnalyticsJob }>('/api/v1/jobs', { method: 'POST', body: formData }),
@@ -238,6 +321,30 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
       setFirstFrame(null)
       setRestrictedArea(EMPTY_RESTRICTED_AREA)
       setConfigurationError(null)
+      queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
+      setSelectedJobId(response.data.id)
+    },
+  })
+
+  const createLiveJob = useMutation({
+    mutationFn: async () => {
+      if (!selectedLiveCamera) throw new Error('ابتدا یک دوربین زنده انتخاب کنید.')
+      const response = await fetch(`/api/cameras/${selectedLiveCamera.id}/analytics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicationIds: selectedLiveApplications,
+          maxFrames: 1_800,
+        }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = body?.detail?.detail ?? body?.detail ?? body?.error
+        throw new Error(typeof detail === 'string' ? detail : 'شروع تحلیل زنده ناموفق بود')
+      }
+      return body as { data: AnalyticsJob }
+    },
+    onSuccess: response => {
       queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
       setSelectedJobId(response.data.id)
     },
@@ -282,9 +389,11 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold">تحلیل ویدیوی ضبط‌شده</h1>
+        <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده' : 'تحلیل ویدیو'}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          ویدیو را بارگذاری کنید و یکی از برنامه‌های موجود در video_analytics_mvp را اجرا کنید.
+          {mode === 'live'
+            ? 'تحلیل‌ها را برای هر دوربین جداگانه روشن یا خاموش کنید و نتیجه پردازش‌شده را زنده ببینید.'
+            : 'یک فایل ویدیویی بارگذاری کنید و نتایج تحلیل ضبط‌شده را جدا از پایش زنده ببینید.'}
         </p>
       </div>
 
@@ -299,7 +408,106 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
         </div>
       )}
 
-      <form ref={formRef} onSubmit={submit} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+      {mode === 'live' && <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+        <div>
+          <h2 className="text-base font-semibold">تحلیل دوربین زنده</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            دوربین و نوع تحلیل را انتخاب کنید؛ خروجی پردازش‌شده و دکمه توقف در همین صفحه نمایش داده می‌شود.
+          </p>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="live_camera">دوربین زنده</Label>
+            <select
+              id="live_camera"
+              value={selectedLiveCamera?.id ?? ''}
+              onChange={event => setSelectedLiveCameraId(event.target.value)}
+              disabled={camerasQuery.isLoading || liveCameras.length === 0}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {liveCameras.map(camera => (
+                <option key={camera.id} value={camera.id}>{camera.name}</option>
+              ))}
+            </select>
+            {liveCameras.length === 0 && !camerasQuery.isLoading && (
+              <p className="text-xs text-amber-600">هیچ دوربینی با آدرس استریم ثبت نشده است.</p>
+            )}
+          </div>
+
+          <div className="space-y-2 lg:row-span-2">
+            <Label>تحلیل‌های فعال</Label>
+            <div className="space-y-2" role="group" aria-label="تحلیل‌های زنده">
+              {LIVE_TASKS.filter(task => task.id !== 'restricted_area' || selectedCameraHasRestrictedArea).map(task => {
+                const checked = selectedLiveApplications.includes(task.id)
+                return (
+                  <label
+                    key={task.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      checked ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'hover:bg-accent'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelectedLiveApplications(current =>
+                        checked
+                          ? current.filter(id => id !== task.id)
+                          : [...current, task.id],
+                      )}
+                      className="mt-1 size-4 rounded border-input accent-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold">{task.label}</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                        {task.description}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              همه تحلیل‌های انتخاب‌شده در یک پردازش مشترک اجرا می‌شوند؛ تشخیص و ردیابی فقط یک‌بار انجام می‌شود.
+            </p>
+            {!selectedCameraHasRestrictedArea && selectedLiveCamera && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                برای فعال‌سازی تشخیص ناحیه ممنوعه، ابتدا در بخش مناطق یک محدوده برای این دوربین رسم کنید.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {livePlaybackUrls && (
+          <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-lg border bg-black">
+            <CameraStreamPlayer
+              key={selectedLiveCamera?.id}
+              whepSrc={livePlaybackUrls.whep}
+              hlsSrc={livePlaybackUrls.hls}
+            />
+          </div>
+        )}
+
+        {createLiveJob.error && (
+          <p className="text-sm text-red-600" dir="auto">{createLiveJob.error.message}</p>
+        )}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={() => createLiveJob.mutate()}
+            disabled={createLiveJob.isPending || !selectedLiveCamera || selectedLiveApplications.length === 0}
+          >
+            {createLiveJob.isPending ? <Loader2 className="animate-spin" /> : <Activity />}
+            {createLiveJob.isPending ? 'در حال اتصال...' : `شروع ${selectedLiveApplications.length} تحلیل با هم`}
+          </Button>
+        </div>
+      </section>}
+
+      {mode === 'recorded' && <form ref={formRef} onSubmit={submit} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+        <div>
+          <h2 className="text-base font-semibold">تحلیل ویدیوی ضبط‌شده</h2>
+          <p className="mt-1 text-xs text-muted-foreground">برای تحلیل آفلاین، فایل ویدیو و برنامه تحلیلی را انتخاب کنید.</p>
+        </div>
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="video">فایل ویدیو</Label>
@@ -430,7 +638,7 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
             {createJob.isPending ? 'در حال بارگذاری...' : 'بارگذاری و شروع تحلیل'}
           </Button>
         </div>
-      </form>
+      </form>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -441,13 +649,13 @@ export function VideoAnalyticsClient({ canEnableReid }: { canEnableReid: boolean
         </div>
         {jobsQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">در حال دریافت پردازش‌ها...</p>
-        ) : (jobsQuery.data?.data.length ?? 0) === 0 ? (
+        ) : visibleJobs.length === 0 ? (
           <div className="rounded-xl border border-dashed bg-card p-10 text-center text-sm text-muted-foreground">
             هنوز ویدیویی برای تحلیل ارسال نشده است.
           </div>
         ) : (
           <div className="space-y-4">
-            {jobsQuery.data?.data.map((job, index) => (
+            {visibleJobs.map((job, index) => (
               <JobCard
                 key={job.id}
                 job={job}
@@ -491,7 +699,9 @@ function JobCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {job.application.name} · {job.camera_id}
+              {job.enabled_tasks.length > 0
+                ? job.enabled_tasks.map(taskId => LIVE_TASKS.find(task => task.id === taskId)?.label ?? taskId).join(' + ')
+                : job.application.name} · {job.camera_id}
               {job.enable_reid ? ' · OSNet ReID فعال' : ''}
             </p>
           </div>
@@ -538,7 +748,11 @@ function JobCard({
               />
             </div>
           )}
-          <DynamicMetrics schema={job.application.metric_schema} live={live} history={history} phase="live" />
+          {job.enabled_tasks.length > 0 ? (
+            <LiveTaskMetrics tasks={job.enabled_tasks} live={live} history={history} />
+          ) : (
+            <DynamicMetrics schema={job.application.metric_schema} live={live} history={history} phase="live" />
+          )}
         </div>
       )}
 
@@ -551,7 +765,11 @@ function JobCard({
             </div>
           )}
 
-          <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
+          {job.enabled_tasks.length > 0 ? (
+            <LiveTaskMetrics tasks={job.enabled_tasks} live={live ?? job.live} history={history} />
+          ) : (
+            <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
+          )}
 
           <div className="flex flex-wrap gap-2">
             {Object.entries(job.artifacts)
@@ -625,6 +843,79 @@ function appendHistory(previous: Record<string, number[]>, metrics: Record<strin
     if (typeof value === 'number' && Number.isFinite(value)) next[key] = [...(next[key] ?? []), value].slice(-60)
   })
   return next
+}
+
+const IMPORTANT_LIVE_METRICS: Record<LiveTaskId, MetricDefinition[]> = {
+  people_counting: [
+    { key: 'current_people', label: 'افراد حاضر', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'counter', availability: 'both' },
+    { key: 'total_unique_people', label: 'افراد یکتا', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
+    { key: 'entry_count', label: 'ورودی', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
+    { key: 'exit_count', label: 'خروجی', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
+  ],
+  heatmap: [
+    { key: 'top_crowded_regions', label: 'پرتراکم‌ترین بخش‌ها', value_type: 'table', unit: null, aggregation: 'current', display: 'table', availability: 'both' },
+  ],
+  vertical_queue: [
+    { key: 'queue_length', label: 'طول صف', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'chart', availability: 'both' },
+    { key: 'queue_wait_seconds', label: 'زمان انتظار تقریبی', value_type: 'number', unit: 'ثانیه', aggregation: 'average', display: 'chart', availability: 'both' },
+    { key: 'queue_speed', label: 'سرعت حرکت صف', value_type: 'number', unit: 'px/s', aggregation: 'average', display: 'chart', availability: 'both' },
+  ],
+  restricted_area: [
+    { key: 'restricted_occupancy', label: 'افراد داخل محدوده', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'status', availability: 'both' },
+    { key: 'restricted_entries', label: 'ورود به محدوده', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
+    { key: 'restricted_exits', label: 'خروج از محدوده', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
+    { key: 'restricted_violations', label: 'هشدارهای تأییدشده', value_type: 'integer', unit: null, aggregation: 'total', display: 'counter', availability: 'both' },
+  ],
+}
+
+function LiveTaskMetrics({
+  tasks,
+  live,
+  history,
+}: {
+  tasks: string[]
+  live: LiveEvent | null
+  history: Record<string, number[]>
+}) {
+  if (!live) return null
+  const metrics: Record<string, unknown> = { ...live.metrics }
+  return (
+    <div className="space-y-4">
+      {LIVE_TASKS.filter(task => tasks.includes(task.id)).map(task => {
+        const definitions = IMPORTANT_LIVE_METRICS[task.id]
+        const hasValue = definitions.some(definition => metrics[definition.key] !== undefined && metrics[definition.key] !== null)
+        if (!hasValue) return null
+        return (
+          <section key={task.id} className="rounded-xl border bg-muted/10 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">{task.label}</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">{task.description}</p>
+              </div>
+              <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-semibold text-green-700">
+                فعال
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {definitions.map(definition => (
+                <MetricWidget
+                  key={definition.key}
+                  definition={definition}
+                  value={metrics[definition.key]}
+                  history={history[definition.key] ?? []}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
+      <div className="flex flex-wrap gap-4 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground" dir="ltr">
+        <span>Frames: {formatDisplayValue(live.metrics.frame_count)}</span>
+        <span>FPS: {formatDisplayValue(live.metrics.processing_fps)}</span>
+        <span>Elapsed: {formatDisplayValue(live.elapsed_seconds)}s</span>
+      </div>
+    </div>
+  )
 }
 
 function DynamicMetrics({

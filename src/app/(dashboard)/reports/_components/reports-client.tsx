@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Camera, Wifi, WifiOff, HelpCircle, Store, BarChart3 } from 'lucide-react'
+import { Camera, Wifi, WifiOff, HelpCircle, Store, BarChart3, LogIn, LogOut, ChevronDown } from 'lucide-react'
 import type { ReportsData } from '@/modules/report/types'
 
 async function fetchReports(): Promise<ReportsData> {
@@ -12,6 +13,7 @@ async function fetchReports(): Promise<ReportsData> {
 }
 
 export function ReportsClient() {
+  const [openRestrictedReport, setOpenRestrictedReport] = useState<'entered' | 'exited' | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reports'],
     queryFn: fetchReports,
@@ -34,7 +36,9 @@ export function ReportsClient() {
     )
   }
 
-  const { cameraStatus, camerasByField, boothsByMarket } = data
+  const { cameraStatus, camerasByField, boothsByMarket, restrictedAreaEvents } = data
+  const entries = restrictedAreaEvents.filter(event => event.event_type === 'restricted_area_entered')
+  const exits = restrictedAreaEvents.filter(event => event.event_type === 'restricted_area_exited')
   const onlineRatio =
     cameraStatus.total > 0
       ? Math.round((cameraStatus.online / cameraStatus.total) * 100)
@@ -42,6 +46,30 @@ export function ReportsClient() {
 
   return (
     <div className="space-y-8">
+      <section className="space-y-4">
+        <SectionHeader icon={LogIn} title="گزارش ورود و خروج مناطق ممنوعه" />
+        <p className="text-xs text-muted-foreground">برای مشاهده جزئیات هر گزارش روی کارت آن کلیک کنید.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <RestrictedReportCard
+            label="ورود به منطقه ممنوعه"
+            count={entries.length}
+            icon={LogIn}
+            open={openRestrictedReport === 'entered'}
+            onClick={() => setOpenRestrictedReport(current => current === 'entered' ? null : 'entered')}
+          />
+          <RestrictedReportCard
+            label="خروج از منطقه ممنوعه"
+            count={exits.length}
+            icon={LogOut}
+            open={openRestrictedReport === 'exited'}
+            onClick={() => setOpenRestrictedReport(current => current === 'exited' ? null : 'exited')}
+          />
+        </div>
+        {openRestrictedReport && (
+          <RestrictedEventsTable events={openRestrictedReport === 'entered' ? entries : exits} />
+        )}
+      </section>
+
       {/* Camera Status */}
       <section className="space-y-4">
         <SectionHeader icon={Camera} title="خلاصه وضعیت دوربین‌ها" />
@@ -170,6 +198,34 @@ export function ReportsClient() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function RestrictedReportCard({ label, count, icon: Icon, open, onClick }: {
+  label: string
+  count: number
+  icon: React.ComponentType<{ className?: string }>
+  open: boolean
+  onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-expanded={open} className={`flex items-center gap-4 rounded-xl border bg-card p-4 text-right shadow-sm transition ${open ? 'border-primary ring-2 ring-primary/20' : 'hover:bg-accent'}`}>
+      <span className="flex size-10 items-center justify-center rounded-lg bg-red-100 text-red-600"><Icon className="size-5" /></span>
+      <span className="flex-1"><span className="block text-sm font-semibold">{label}</span><span className="mt-1 block text-xs text-muted-foreground">{count} رویداد اخیر</span></span>
+      <ChevronDown className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+  )
+}
+
+function RestrictedEventsTable({ events }: { events: ReportsData['restrictedAreaEvents'] }) {
+  if (events.length === 0) return <div className="rounded-xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">هنوز رویدادی ثبت نشده است.</div>
+  return (
+    <div className="max-h-96 overflow-auto rounded-xl border bg-card shadow-sm">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 border-b bg-muted text-right"><tr><th className="p-3">دوربین</th><th className="p-3">منطقه</th><th className="p-3">شناسه فرد</th><th className="p-3">زمان</th><th className="p-3">جزئیات</th></tr></thead>
+        <tbody className="divide-y">{events.map(event => <tr key={event.event_id} className="hover:bg-muted/30"><td className="p-3 font-medium">{event.camera_name}</td><td className="p-3">{event.zone_id ?? '—'}</td><td className="p-3" dir="ltr">{event.track_id ?? '—'}</td><td className="p-3">{new Date(event.timestamp * 1000).toLocaleString('fa-IR')}</td><td className="p-3 text-xs text-muted-foreground">{event.payload?.duration_seconds != null ? `${Number(event.payload.duration_seconds).toFixed(1)} ثانیه` : '—'}</td></tr>)}</tbody>
+      </table>
     </div>
   )
 }

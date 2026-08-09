@@ -13,6 +13,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/users':            'مدیریت کاربران',
   '/cameras':          'مدیریت دوربین‌ها',
   '/monitoring':       'مانیتورینگ زنده',
+  '/live-analytics':   'تحلیل زنده دوربین‌ها',
+  '/analytics':        'تحلیل ویدیوی ضبط‌شده',
   '/reports':          'گزارش‌ها و تحلیل',
   '/settings':         'تنظیمات سیستم',
 }

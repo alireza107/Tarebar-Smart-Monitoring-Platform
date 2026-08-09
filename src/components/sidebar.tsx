@@ -30,13 +30,14 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   '/cameras':          Camera,
   '/regions':          Shapes,
   '/monitoring':       Monitor,
+  '/live-analytics':   BrainCircuit,
   '/analytics':        BrainCircuit,
   '/reports':          BarChart3,
   '/settings':         Settings,
 }
 
 const NAV_GROUPS = [
-  { label: 'عملیات',  hrefs: ['/dashboard', '/monitoring', '/analytics', '/reports'] },
+  { label: 'عملیات',  hrefs: ['/dashboard', '/monitoring', '/live-analytics', '/analytics', '/reports'] },
   { label: 'مدیریت',  hrefs: ['/fields', '/markets', '/booths', '/booth-categories'] },
   { label: 'سیستم',   hrefs: ['/users', '/cameras', '/regions', '/settings'] },
 ]

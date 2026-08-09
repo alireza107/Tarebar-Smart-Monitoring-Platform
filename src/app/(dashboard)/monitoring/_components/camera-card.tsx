@@ -3,14 +3,28 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { BrainCircuit, Camera, MapPin, ExternalLink, VideoOff, Play } from 'lucide-react'
+import Link from 'next/link'
+import {
+  BrainCircuit,
+  Camera,
+  Flame,
+  MapPin,
+  ExternalLink,
+  ScanSearch,
+  Users,
+  VideoOff,
+  Play,
+  Route,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { CameraStreamPlayer } from './camera-stream-player'
 import { CameraSnapshot } from './camera-snapshot'
 import { derivePlaybackUrls } from '@/modules/camera/stream'
@@ -51,8 +65,52 @@ interface CameraCardProps {
   camera: CameraType
 }
 
+const LIVE_ANALYTICS = [
+  {
+    id: 'detection',
+    label: 'تشخیص افراد',
+    description: 'تشخیص افراد و نمایش کادر دور هر فرد',
+    icon: ScanSearch,
+  },
+  {
+    id: 'tracking',
+    label: 'ردیابی افراد',
+    description: 'ردیابی افراد با شناسه و مسیر حرکت',
+    icon: Route,
+  },
+  {
+    id: 'people_counting',
+    label: 'شمارش افراد',
+    description: 'تعداد فعلی و مجموع افراد یکتا',
+    icon: Users,
+  },
+  {
+    id: 'heatmap',
+    label: 'نقشه حرارتی',
+    description: 'نمایش زنده تراکم و زمان توقف افراد',
+    icon: Flame,
+  },
+  {
+    id: 'vertical_queue',
+    label: 'تشخیص خودکار صف',
+    description: 'تشخیص صف، طول صف و سرعت حرکت آن',
+    icon: BrainCircuit,
+  },
+  {
+    id: 'restricted_area',
+    label: 'ناحیه ممنوعه',
+    description: 'تشخیص ورود و خروج از مناطق ثبت‌شده این دوربین',
+    icon: MapPin,
+  },
+] as const
+
+type LiveAnalyticsId = (typeof LIVE_ANALYTICS)[number]['id']
+
 export function CameraCard({ camera }: CameraCardProps) {
   const [open, setOpen] = useState(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [selectedAnalytics, setSelectedAnalytics] =
+    useState<LiveAnalyticsId>('people_counting')
   const status = STATUS_CONFIG[camera.status] ?? STATUS_CONFIG.UNKNOWN
   const isOnline = camera.status === 'ONLINE'
 
@@ -67,11 +125,19 @@ export function CameraCard({ camera }: CameraCardProps) {
         // At the default 30 FPS / stride 10 this is roughly a ten-minute live
         // session and prevents one accidental click from occupying the single
         // analytics worker and growing an output file forever.
-        body: JSON.stringify({ applicationId: 'people_counting', maxFrames: 1_800 }),
+        body: JSON.stringify({ applicationId: selectedAnalytics, maxFrames: 1_800 }),
       })
-      if (!response.ok) throw new Error('سرویس تحلیل تصویر در دسترس نیست')
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        const detail = body?.detail?.detail ?? body?.detail ?? body?.error
+        throw new Error(typeof detail === 'string' ? detail : 'سرویس تحلیل تصویر در دسترس نیست')
+      }
     },
-    onSuccess: () => toast.success('تحلیل زنده دوربین شروع شد'),
+    onSuccess: () => {
+      setAnalyticsOpen(false)
+      const task = LIVE_ANALYTICS.find(item => item.id === selectedAnalytics)
+      toast.success(`تحلیل «${task?.label ?? selectedAnalytics}» شروع شد`)
+    },
     onError: (error: Error) => toast.error(error.message),
   })
 
@@ -184,16 +250,80 @@ export function CameraCard({ camera }: CameraCardProps) {
           <button
             type="button"
             disabled={startAnalytics.isPending}
-            onClick={() => startAnalytics.mutate()}
+            onClick={() => setAnalyticsOpen(true)}
             className="mt-1 flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           >
             <BrainCircuit className="h-3.5 w-3.5" />
-            {startAnalytics.isPending ? 'در حال اتصال…' : 'شروع تحلیل زنده'}
+            انتخاب تحلیل زنده
           </button>
         )}
       </div>
 
       {/* Live stream viewer */}
+      {canPlay && playbackUrls && (
+        <Dialog open={analyticsOpen} onOpenChange={setAnalyticsOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle className="text-right">تحلیل زنده {camera.name}</DialogTitle>
+              <DialogDescription className="text-right leading-6">
+                تحلیل موردنظر را انتخاب کنید. هر بار یک خروجی زنده پردازش می‌شود و نتیجه در صفحه
+                تحلیل ویدیو نمایش داده خواهد شد.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              {LIVE_ANALYTICS.filter(task => task.id !== 'restricted_area' || Boolean(camera._count?.regions)).map(task => {
+                const Icon = task.icon
+                const selected = selectedAnalytics === task.id
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setSelectedAnalytics(task.id)}
+                    className={`flex items-start gap-3 rounded-lg border p-3 text-right transition-colors ${
+                      selected
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                        : 'hover:bg-accent'
+                    }`}
+                  >
+                    <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                      <Icon className="size-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">{task.label}</span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {task.description}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
+              ناحیه ممنوعه و صف پیکربندی‌شده به هندسه مخصوص هر دوربین نیاز دارند و پس از ثبت
+              محدوده‌های دوربین قابل فعال‌سازی خواهند بود.
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => startAnalytics.mutate()}
+                disabled={startAnalytics.isPending}
+              >
+                <BrainCircuit />
+                {startAnalytics.isPending ? 'در حال اتصال…' : 'فعال‌سازی تحلیل انتخاب‌شده'}
+              </Button>
+              <Button type="button" variant="outline" render={<Link href="/live-analytics" />}>
+                مشاهده خروجی‌ها
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {canPlay && playbackUrls && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-2xl lg:max-w-3xl">

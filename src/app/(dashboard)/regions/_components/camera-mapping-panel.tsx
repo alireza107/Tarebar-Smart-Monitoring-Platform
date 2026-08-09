@@ -9,8 +9,8 @@ import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import { PolygonEditor, type PolygonValue } from './polygon-editor'
 import { Pencil, Trash2, Video } from 'lucide-react'
 import type { RegionDetail, CameraRegionMapping } from '@/modules/region/types'
-import { deriveHlsUrl } from '@/modules/camera/stream'
-import { useCameraSnapshot } from '@/modules/camera/use-camera-snapshot'
+import { derivePlaybackUrls } from '@/modules/camera/stream'
+import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
 
 interface CameraOption {
   id: string
@@ -38,10 +38,10 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
     queryFn: () => fetch('/api/cameras').then(r => r.json()).then(j => j.data),
   })
 
-  // Capture a still frame of the camera being edited to draw polygons against.
+  // Render the same resilient WebRTC/HLS player used by live monitoring behind
+  // the SVG. This avoids cross-origin canvas capture failures in some browsers.
   const editingCamera = editing ? cameras.find(c => c.id === editing.cameraId) : undefined
-  const editingHlsUrl = editing ? deriveHlsUrl(editingCamera?.streamUrl) : null
-  const { frame: background } = useCameraSnapshot(editingHlsUrl)
+  const editingPlaybackUrls = editing ? derivePlaybackUrls(editingCamera?.streamUrl) : null
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['region', region.id] })
@@ -109,8 +109,20 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
         <PolygonEditor
           value={editing.value}
           onChange={v => setEditing({ ...editing, value: v })}
-          backgroundUrl={background}
+          backgroundContent={editingPlaybackUrls ? (
+            <CameraStreamPlayer
+              key={editing.cameraId}
+              whepSrc={editingPlaybackUrls.whep}
+              hlsSrc={editingPlaybackUrls.hls}
+              chrome={false}
+            />
+          ) : null}
         />
+        {!editingPlaybackUrls && (
+          <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            آدرس پخش این دوربین معتبر نیست. آدرس RTSP دوربین را بررسی کنید.
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditing(null)} disabled={isPending}>
             انصراف

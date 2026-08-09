@@ -14,4 +14,5 @@ export interface Camera {
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
+  _count?: { regions: number }
 }
