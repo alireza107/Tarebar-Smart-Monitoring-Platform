@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,11 @@ import { PolygonEditor, type PolygonValue } from './polygon-editor'
 import { Pencil, Trash2, Video } from 'lucide-react'
 import type { RegionDetail, CameraRegionMapping } from '@/modules/region/types'
 import { derivePlaybackUrls } from '@/modules/camera/stream'
-import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
+import { useCameraSnapshot } from '@/modules/camera/use-camera-snapshot'
+import {
+  CameraStreamPlayer,
+  type PlayerState,
+} from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
 
 interface CameraOption {
   id: string
@@ -42,6 +46,39 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
   // the SVG. This avoids cross-origin canvas capture failures in some browsers.
   const editingCamera = editing ? cameras.find(c => c.id === editing.cameraId) : undefined
   const editingPlaybackUrls = editing ? derivePlaybackUrls(editingCamera?.streamUrl) : null
+
+  // Live phone/RTMP feeds are flaky. Fall back to the last snapshot captured
+  // while the stream was healthy so the editor still has a reference image.
+  const [liveState, setLiveState] = useState<PlayerState>('connecting')
+  useEffect(() => {
+    setLiveState('connecting')
+  }, [editing?.cameraId])
+
+  const { data: storedSnapshot } = useQuery({
+    queryKey: ['camera-snapshot', editing?.cameraId],
+    queryFn: () =>
+      fetch(`/api/cameras/${editing!.cameraId}/snapshot`)
+        .then(r => r.json())
+        .then(j => j.data as { dataUrl: string | null; updatedAt: string | null }),
+    enabled: !!editing,
+  })
+
+  const { frame: capturedFrame } = useCameraSnapshot(editingPlaybackUrls?.hls)
+  const savedFrameRef = useRef<string | null>(null)
+  const saveSnapshotMutation = useMutation({
+    mutationFn: (dataUrl: string) => putJson(`/api/cameras/${editing!.cameraId}/snapshot`, { dataUrl }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['camera-snapshot', editing?.cameraId] }),
+  })
+  useEffect(() => {
+    if (!capturedFrame || !editing || !canEdit) return
+    if (savedFrameRef.current === capturedFrame) return
+    savedFrameRef.current = capturedFrame
+    saveSnapshotMutation.mutate(capturedFrame)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capturedFrame, editing?.cameraId, canEdit])
+
+  const showLive = !!editingPlaybackUrls && liveState !== 'error'
+  const snapshotUrl = storedSnapshot?.dataUrl ?? null
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['region', region.id] })
@@ -109,18 +146,31 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
         <PolygonEditor
           value={editing.value}
           onChange={v => setEditing({ ...editing, value: v })}
-          backgroundContent={editingPlaybackUrls ? (
+          backgroundContent={showLive ? (
             <CameraStreamPlayer
               key={editing.cameraId}
-              whepSrc={editingPlaybackUrls.whep}
-              hlsSrc={editingPlaybackUrls.hls}
+              whepSrc={editingPlaybackUrls!.whep}
+              hlsSrc={editingPlaybackUrls!.hls}
               chrome={false}
+              onStateChange={setLiveState}
             />
           ) : null}
+          backgroundUrl={!showLive ? snapshotUrl : undefined}
         />
         {!editingPlaybackUrls && (
           <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
             آدرس پخش این دوربین معتبر نیست. آدرس RTSP دوربین را بررسی کنید.
+          </p>
+        )}
+        {editingPlaybackUrls && !showLive && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+            {snapshotUrl
+              ? `استریم زنده در دسترس نیست؛ آخرین تصویر ذخیره‌شده${
+                  storedSnapshot?.updatedAt
+                    ? ' (' + new Date(storedSnapshot.updatedAt).toLocaleString('fa-IR') + ')'
+                    : ''
+                } نمایش داده می‌شود.`
+              : 'استریم زنده در دسترس نیست و هنوز تصویری از این دوربین ذخیره نشده است. به‌محض آنلاین‌شدن دوربین، تصویر به‌طور خودکار ذخیره خواهد شد.'}
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -225,6 +275,12 @@ async function postJson(url: string, body: unknown) {
 async function patchJson(url: string, body: unknown) {
   const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(await errMessage(res, 'خطا در به‌روزرسانی نگاشت'))
+  return res.json()
+}
+
+async function putJson(url: string, body: unknown) {
+  const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await errMessage(res, 'خطا در ذخیره تصویر'))
   return res.json()
 }
 

@@ -11,9 +11,11 @@ interface CameraStreamPlayerProps {
   hlsSrc: string
   /** Hide native controls and transport badge when used as a drawing background. */
   chrome?: boolean
+  /** Notified whenever the connection state changes, e.g. to drive a fallback background. */
+  onStateChange?: (state: PlayerState) => void
 }
 
-type PlayerState = 'connecting' | 'webrtc' | 'hls' | 'error'
+export type PlayerState = 'connecting' | 'webrtc' | 'hls' | 'error'
 const WEBRTC_TIMEOUT_MS = 10_000
 const RETRY_DELAYS_MS = [1_000, 2_000, 5_000]
 
@@ -33,10 +35,14 @@ function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
  * WebRTC-first MediaMTX player with bounded reconnects and an HLS fallback.
  * WHEP is negotiated directly so player errors are visible to the dashboard.
  */
-export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true }: CameraStreamPlayerProps) {
+export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true, onStateChange }: CameraStreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [state, setState] = useState<PlayerState>('connecting')
   const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    onStateChange?.(state)
+  }, [state, onStateChange])
 
   const retry = useCallback(() => {
     setState('connecting')

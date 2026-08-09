@@ -8,14 +8,24 @@ const include = {
   _count: { select: { regions: { where: { deletedAt: null } } } },
 } as const
 
+// The snapshot is a base64 JPEG data URL and can be tens/hundreds of KB —
+// keep it out of list/detail responses that don't need it.
+const omitSnapshot = { snapshotDataUrl: true, snapshotUpdatedAt: true } as const
+
 export const cameraRepository = {
   findAll: () =>
-    db.camera.findMany({ where: { deletedAt: null }, include, orderBy: { createdAt: 'desc' } }),
+    db.camera.findMany({
+      where: { deletedAt: null },
+      include,
+      omit: omitSnapshot,
+      orderBy: { createdAt: 'desc' },
+    }),
 
   findByFieldIds: (fieldIds: string[]) =>
     db.camera.findMany({
       where: { fieldId: { in: fieldIds }, deletedAt: null },
       include,
+      omit: omitSnapshot,
       orderBy: { createdAt: 'desc' },
     }),
 
@@ -23,11 +33,25 @@ export const cameraRepository = {
     db.camera.findMany({
       where: { marketId: { in: marketIds }, deletedAt: null },
       include,
+      omit: omitSnapshot,
       orderBy: { createdAt: 'desc' },
     }),
 
   findById: (id: string) =>
-    db.camera.findFirst({ where: { id, deletedAt: null }, include }),
+    db.camera.findFirst({ where: { id, deletedAt: null }, include, omit: omitSnapshot }),
+
+  getSnapshot: (id: string) =>
+    db.camera.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, snapshotDataUrl: true, snapshotUpdatedAt: true },
+    }),
+
+  updateSnapshot: (id: string, dataUrl: string) =>
+    db.camera.update({
+      where: { id },
+      data: { snapshotDataUrl: dataUrl, snapshotUpdatedAt: new Date() },
+      select: { id: true, snapshotUpdatedAt: true },
+    }),
 
   create: (data: CreateCameraDto) =>
     db.camera.create({

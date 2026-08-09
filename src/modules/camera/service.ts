@@ -17,6 +17,10 @@ export const cameraService = {
 
   getById: (id: string) => cameraRepository.findById(id),
 
+  getSnapshot: (id: string) => cameraRepository.getSnapshot(id),
+
+  updateSnapshot: (id: string, dataUrl: string) => cameraRepository.updateSnapshot(id, dataUrl),
+
   create: (data: CreateCameraDto) => cameraRepository.create(data),
 
   update: (id: string, data: UpdateCameraDto) => cameraRepository.update(id, data),

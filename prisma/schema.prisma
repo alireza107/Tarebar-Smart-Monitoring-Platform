@@ -175,6 +175,12 @@ model Camera {
   updatedAt DateTime     @updatedAt
   deletedAt DateTime?
 
+  // Last known frame, captured client-side while the live stream is healthy.
+  // Lets the region polygon editor show a reference image when the live feed
+  // (often a phone-based RTMP push) is temporarily unreachable.
+  snapshotDataUrl   String?   @db.Text
+  snapshotUpdatedAt DateTime?
+
   field  Field?  @relation(fields: [fieldId], references: [id])
   market Market? @relation(fields: [marketId], references: [id])
   booth  Booth?  @relation(fields: [boothId], references: [id])
