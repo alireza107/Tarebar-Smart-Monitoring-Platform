@@ -35,6 +35,11 @@ enum AuditAction {
   EXPORT
 }
 
+enum RegionType {
+  RESTRICTED_AREA
+  QUEUE
+}
+
 // ─── Auth.js required models ─────────────────────────────────────────────────
 
 model Account {
@@ -205,6 +210,7 @@ model Region {
   description String?
   marketId    String
   color       String? // optional UI hint, e.g. "#22c55e"
+  type        RegionType @default(RESTRICTED_AREA)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
@@ -213,8 +219,9 @@ model Region {
   cameraRegions CameraRegion[]
   booths        RegionBooth[]
 
-  // Unique region name per market (case-insensitive enforced in the service layer).
-  @@unique([marketId, name])
+  // The same name may be reused for a different analytic purpose in one market.
+  // Case-insensitive uniqueness per (market, type) is enforced in the service layer.
+  @@unique([marketId, name, type])
   @@index([marketId])
 }
 

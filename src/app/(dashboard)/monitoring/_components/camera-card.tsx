@@ -91,9 +91,9 @@ const LIVE_ANALYTICS = [
     icon: Flame,
   },
   {
-    id: 'vertical_queue',
-    label: 'تشخیص خودکار صف',
-    description: 'تشخیص صف، طول صف و سرعت حرکت آن',
+    id: 'configured_queue',
+    label: 'تحلیل خط صف',
+    description: 'تعداد و میانگین سرعت افراد در صف تعریف‌شده',
     icon: BrainCircuit,
   },
   {
@@ -117,6 +117,12 @@ export function CameraCard({ camera }: CameraCardProps) {
   const playbackUrls = derivePlaybackUrls(camera.streamUrl)
   // Only an online camera with a playable stream can be opened in the viewer.
   const canPlay = isOnline && !!playbackUrls
+  const hasRestrictedArea = Boolean(
+    camera.regions?.some(mapping => mapping.region.type === 'RESTRICTED_AREA'),
+  )
+  const hasQueue = Boolean(
+    camera.regions?.some(mapping => mapping.region.type === 'QUEUE'),
+  )
   const startAnalytics = useMutation({
     mutationFn: async () => {
       const response = await fetch(`/api/cameras/${camera.id}/analytics`, {
@@ -272,7 +278,10 @@ export function CameraCard({ camera }: CameraCardProps) {
             </DialogHeader>
 
             <div className="grid gap-2 sm:grid-cols-2">
-              {LIVE_ANALYTICS.filter(task => task.id !== 'restricted_area' || Boolean(camera._count?.regions)).map(task => {
+              {LIVE_ANALYTICS.filter(task =>
+                (task.id !== 'restricted_area' || hasRestrictedArea) &&
+                (task.id !== 'configured_queue' || hasQueue),
+              ).map(task => {
                 const Icon = task.icon
                 const selected = selectedAnalytics === task.id
                 return (

@@ -6,6 +6,10 @@ const include = {
   market: { select: { id: true, name: true } },
   booth:  { select: { id: true, number: true } },
   _count: { select: { regions: { where: { deletedAt: null } } } },
+  regions: {
+    where: { deletedAt: null, region: { deletedAt: null } },
+    select: { region: { select: { type: true } } },
+  },
 } as const
 
 // The snapshot is a base64 JPEG data URL and can be tens/hundreds of KB —

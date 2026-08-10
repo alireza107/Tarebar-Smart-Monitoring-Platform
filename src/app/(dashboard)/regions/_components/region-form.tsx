@@ -14,6 +14,7 @@ const regionFormSchema = z.object({
   description: z.string().max(500).optional().or(z.literal('')),
   marketId: z.string().min(1, 'انتخاب بازار الزامی است'),
   color: z.string().regex(/^#([0-9a-fA-F]{6})$/, 'رنگ نامعتبر است').optional().or(z.literal('')),
+  type: z.enum(['RESTRICTED_AREA', 'QUEUE']),
 })
 
 export type RegionFormValues = z.infer<typeof regionFormSchema>
@@ -59,7 +60,7 @@ export function RegionForm({
     formState: { errors },
   } = useForm<RegionFormValues>({
     resolver: zodResolver(regionFormSchema),
-    defaultValues: { color: '#10b981', ...defaultValues },
+    defaultValues: { color: '#10b981', type: 'RESTRICTED_AREA', ...defaultValues },
   })
 
   const { data: markets = [] } = useQuery<{ id: string; name: string }[]>({
@@ -84,6 +85,21 @@ export function RegionForm({
         <Label htmlFor="description">توضیحات (اختیاری)</Label>
         <Input id="description" {...register('description')} placeholder="توضیح کوتاه درباره منطقه" />
         {errors.description && <p className="text-sm text-red-500">{errors.description.message}</p>}
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="type">نوع منطقه</Label>
+        <select
+          id="type"
+          {...register('type')}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="RESTRICTED_AREA">منطقه ممنوعه</option>
+          <option value="QUEUE">خط صف</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          نوع منطقه مشخص می‌کند این محدوده در تشخیص ورود غیرمجاز یا تحلیل صف استفاده شود.
+        </p>
       </div>
 
       <div className="space-y-1">

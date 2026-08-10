@@ -44,8 +44,8 @@ export const regionService = {
   getById: (id: string) => repo.findById(id),
 
   create: async (data: CreateRegionDto, actor: AuditActor) => {
-    if (await repo.nameTaken(data.marketId, data.name)) {
-      throw new RegionServiceError('conflict', 'منطقه‌ای با این نام در این بازار وجود دارد')
+    if (await repo.nameTaken(data.marketId, data.name, data.type)) {
+      throw new RegionServiceError('conflict', 'منطقه‌ای با این نام و نوع در این بازار وجود دارد')
     }
     const region = await repo.create(data)
     await audit({
@@ -54,7 +54,7 @@ export const regionService = {
       entityType: 'Region',
       entityId: region.id,
       marketId: region.marketId,
-      metadata: { after: { name: region.name, marketId: region.marketId } },
+      metadata: { after: { name: region.name, marketId: region.marketId, type: region.type } },
     })
     return region
   },
@@ -63,9 +63,11 @@ export const regionService = {
     const existing = await repo.findRaw(id)
     if (!existing) throw new RegionServiceError('not_found', 'منطقه یافت نشد')
 
-    if (data.name && data.name !== existing.name) {
-      if (await repo.nameTaken(existing.marketId, data.name, id)) {
-        throw new RegionServiceError('conflict', 'منطقه‌ای با این نام در این بازار وجود دارد')
+    const desiredName = data.name ?? existing.name
+    const desiredType = data.type ?? existing.type
+    if (desiredName !== existing.name || desiredType !== existing.type) {
+      if (await repo.nameTaken(existing.marketId, desiredName, desiredType, id)) {
+        throw new RegionServiceError('conflict', 'منطقه‌ای با این نام و نوع در این بازار وجود دارد')
       }
     }
     const updated = await repo.update(id, data)
@@ -76,8 +78,8 @@ export const regionService = {
       entityId: id,
       marketId: existing.marketId,
       metadata: {
-        before: { name: existing.name, description: existing.description, color: existing.color },
-        after: { name: updated.name, description: updated.description, color: updated.color },
+        before: { name: existing.name, description: existing.description, color: existing.color, type: existing.type },
+        after: { name: updated.name, description: updated.description, color: updated.color, type: updated.type },
       },
     })
     return updated
@@ -226,6 +228,7 @@ export const regionService = {
         marketId: r.marketId,
         marketName: r.market.name,
         color: r.color,
+        type: r.type,
         cameraMappings: r.cameraRegions.map(m => ({
           cameraId: m.cameraId,
           cameraName: m.camera.name,
@@ -245,17 +248,19 @@ export const regionService = {
     const results: { name: string; marketId: string; status: 'created' | 'updated' | 'skipped'; reason?: string }[] = []
 
     for (const incoming of data.regions) {
-      const existing = await repo.findByNameInMarket(incoming.marketId, incoming.name)
+      const existing = await repo.findByNameInMarket(incoming.marketId, incoming.name, incoming.type)
       const region = existing
         ? await repo.update(existing.id, {
             description: incoming.description ?? null,
             color: incoming.color ?? null,
+            type: incoming.type,
           })
         : await repo.create({
             name: incoming.name,
             description: incoming.description ?? '',
             marketId: incoming.marketId,
             color: incoming.color ?? '',
+            type: incoming.type,
           })
 
       for (const m of incoming.cameraMappings) {

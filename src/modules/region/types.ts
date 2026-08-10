@@ -1,5 +1,7 @@
 import type { Point } from './geometry'
 
+export type RegionType = 'RESTRICTED_AREA' | 'QUEUE'
+
 export interface CameraRegionMapping {
   id: string
   cameraId: string
@@ -22,6 +24,7 @@ export interface RegionSummary {
   name: string
   description: string | null
   color: string | null
+  type: RegionType
   marketId: string
   market: { id: string; name: string; fieldId: string } | null
   cameraCount: number

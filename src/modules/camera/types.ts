@@ -15,4 +15,5 @@ export interface Camera {
   updatedAt: Date
   deletedAt: Date | null
   _count?: { regions: number }
+  regions?: Array<{ region: { type: 'RESTRICTED_AREA' | 'QUEUE' } }>
 }

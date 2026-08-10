@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
 import { cameraService } from '@/modules/camera/service'
 import { deriveAnalyticsRtspUrl } from '@/modules/camera/stream'
 import { db } from '@/lib/db'
-import { buildRestrictedAreasCameraYaml } from '@/app/(dashboard)/analytics/_components/restricted-area-config'
+import { buildCameraAnalyticsYaml } from '@/app/(dashboard)/analytics/_components/restricted-area-config'
 import type { Point } from '@/modules/region/geometry'
 import type { Role } from '@/lib/permissions'
 
@@ -16,9 +16,9 @@ export const runtime = 'nodejs'
 
 const requestSchema = z.object({
   applicationId: z.string().min(1).optional(),
-  applicationIds: z.array(z.enum(['people_counting', 'heatmap', 'vertical_queue', 'restricted_area']))
+  applicationIds: z.array(z.enum(['people_counting', 'heatmap', 'vertical_queue', 'configured_queue', 'restricted_area']))
     .min(1)
-    .max(4)
+    .max(5)
     .refine(values => new Set(values).size === values.length, 'Tasks must be unique')
     .optional(),
   maxFrames: z.number().int().positive().optional(),
@@ -47,20 +47,45 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const restrictedRequested = parsed.data.applicationId === 'restricted_area' ||
       parsed.data.applicationIds?.includes('restricted_area')
-    const mappings = restrictedRequested
+    const queueRequested = parsed.data.applicationId === 'configured_queue' ||
+      parsed.data.applicationIds?.includes('configured_queue')
+    const mappings = restrictedRequested || queueRequested
       ? await db.cameraRegion.findMany({
-          where: { cameraId: camera.id, deletedAt: null, region: { deletedAt: null } },
-          select: { mainPolygon: true, region: { select: { name: true } } },
+          where: {
+            cameraId: camera.id,
+            deletedAt: null,
+            region: {
+              deletedAt: null,
+              type: { in: [
+                ...(restrictedRequested ? ['RESTRICTED_AREA' as const] : []),
+                ...(queueRequested ? ['QUEUE' as const] : []),
+              ] },
+            },
+          },
+          select: { mainPolygon: true, region: { select: { id: true, name: true, type: true } } },
         })
       : []
-    if (restrictedRequested && mappings.length === 0) {
+    const restrictedMappings = mappings.filter(mapping => mapping.region.type === 'RESTRICTED_AREA')
+    const queueMappings = mappings.filter(mapping => mapping.region.type === 'QUEUE')
+    if (restrictedRequested && restrictedMappings.length === 0) {
       return NextResponse.json({ error: 'No restricted area is configured for this camera' }, { status: 409 })
     }
-    const cameraConfigYaml = restrictedRequested
-      ? buildRestrictedAreasCameraYaml(camera.id, camera.name, mappings.map(mapping => ({
-          id: mapping.region.name,
+    if (queueRequested && queueMappings.length === 0) {
+      return NextResponse.json({ error: 'No queue line is configured for this camera' }, { status: 409 })
+    }
+    const cameraConfigYaml = restrictedRequested || queueRequested
+      ? buildCameraAnalyticsYaml(
+          camera.id,
+          camera.name,
+          restrictedMappings.map(mapping => ({
+            id: `restricted-${mapping.region.name}-${mapping.region.id.slice(-6)}`,
+            points: mapping.mainPolygon as unknown as Point[],
+          })),
+          queueMappings.map(mapping => ({
+            id: `queue-${mapping.region.name}-${mapping.region.id.slice(-6)}`,
           points: mapping.mainPolygon as unknown as Point[],
-        })))
+          })),
+        )
       : undefined
 
     const analyticsBase = (

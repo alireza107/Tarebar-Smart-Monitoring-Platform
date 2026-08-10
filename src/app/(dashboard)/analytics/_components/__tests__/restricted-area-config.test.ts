@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildRestrictedAreaCameraYaml, buildRestrictedAreasCameraYaml } from '../restricted-area-config'
+import {
+  buildCameraAnalyticsYaml,
+  buildRestrictedAreaCameraYaml,
+  buildRestrictedAreasCameraYaml,
+} from '../restricted-area-config'
 
 describe('buildRestrictedAreaCameraYaml', () => {
   it('converts normalized dashboard points into restricted-area YAML', () => {
@@ -25,6 +29,26 @@ describe('buildRestrictedAreaCameraYaml', () => {
         points: [{ x: 0.1, y: 0.2 }, { x: 0.8, y: 0.2 }],
       }),
     ).toThrow('at least three points')
+  })
+})
+
+describe('buildCameraAnalyticsYaml', () => {
+  it('serializes restricted and configured queue regions into one live config', () => {
+    const triangle = [{ x: 0.1, y: 0.1 }, { x: 0.7, y: 0.1 }, { x: 0.4, y: 0.7 }]
+    const yaml = buildCameraAnalyticsYaml(
+      'camera-01',
+      'Entrance',
+      [{ id: 'restricted-1', points: triangle }],
+      [{ id: 'queue-1', points: triangle }],
+    )
+
+    expect(yaml).toContain('    - restricted_area')
+    expect(yaml).toContain('    - queue')
+    expect(yaml).toContain('    - speed')
+    expect(yaml).toContain('  restricted_zones:')
+    expect(yaml).toContain('  queues:')
+    expect(yaml).toContain('      overflow_threshold: 10')
+    expect(yaml).toContain('        point: [0.4, 0.3]')
   })
 })
 

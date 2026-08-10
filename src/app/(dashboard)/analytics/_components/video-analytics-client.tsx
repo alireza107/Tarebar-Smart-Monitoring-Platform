@@ -113,6 +113,11 @@ const LIVE_TASKS = [
     description: 'طول صف، زمان انتظار و سرعت حرکت صف',
   },
   {
+    id: 'configured_queue',
+    label: 'پایش صف تعریف‌شده',
+    description: 'تعداد و سرعت افراد داخل خط‌های صف ثبت‌شده برای دوربین',
+  },
+  {
     id: 'restricted_area',
     label: 'ورود به ناحیه ممنوعه',
     description: 'تشخیص زنده ورود و خروج از مناطق ثبت‌شده برای این دوربین',
@@ -224,7 +229,6 @@ export function VideoAnalyticsClient({
   const [selectedLiveApplications, setSelectedLiveApplications] = useState<LiveTaskId[]>([
     'people_counting',
     'heatmap',
-    'vertical_queue',
   ])
 
   useEffect(() => {
@@ -295,7 +299,12 @@ export function VideoAnalyticsClient({
     if (!selectedLiveCameraId && liveCameras[0]) setSelectedLiveCameraId(liveCameras[0].id)
   }, [liveCameras, selectedLiveCameraId])
 
-  const selectedCameraHasRestrictedArea = Boolean(selectedLiveCamera?._count?.regions)
+  const selectedCameraHasRestrictedArea = Boolean(
+    selectedLiveCamera?.regions?.some(mapping => mapping.region.type === 'RESTRICTED_AREA'),
+  )
+  const selectedCameraHasQueue = Boolean(
+    selectedLiveCamera?.regions?.some(mapping => mapping.region.type === 'QUEUE'),
+  )
   useEffect(() => {
     if (selectedCameraHasRestrictedArea) {
       setSelectedLiveApplications(current => current.includes('restricted_area')
@@ -305,6 +314,16 @@ export function VideoAnalyticsClient({
       setSelectedLiveApplications(current => current.filter(id => id !== 'restricted_area'))
     }
   }, [selectedLiveCamera?.id, selectedCameraHasRestrictedArea])
+
+  useEffect(() => {
+    if (selectedCameraHasQueue) {
+      setSelectedLiveApplications(current => current.includes('configured_queue')
+        ? current.filter(id => id !== 'vertical_queue')
+        : [...current.filter(id => id !== 'vertical_queue'), 'configured_queue'])
+    } else {
+      setSelectedLiveApplications(current => current.filter(id => id !== 'configured_queue'))
+    }
+  }, [selectedLiveCamera?.id, selectedCameraHasQueue])
 
   const visibleJobs = useMemo(
     () => (jobsQuery.data?.data ?? []).filter(job => mode === 'live' ? job.source_type === 'rtsp' : job.source_type !== 'rtsp'),
@@ -438,7 +457,10 @@ export function VideoAnalyticsClient({
           <div className="space-y-2 lg:row-span-2">
             <Label>تحلیل‌های فعال</Label>
             <div className="space-y-2" role="group" aria-label="تحلیل‌های زنده">
-              {LIVE_TASKS.filter(task => task.id !== 'restricted_area' || selectedCameraHasRestrictedArea).map(task => {
+              {LIVE_TASKS.filter(task =>
+                (task.id !== 'restricted_area' || selectedCameraHasRestrictedArea) &&
+                (task.id !== 'configured_queue' || selectedCameraHasQueue),
+              ).map(task => {
                 const checked = selectedLiveApplications.includes(task.id)
                 return (
                   <label
@@ -450,11 +472,16 @@ export function VideoAnalyticsClient({
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => setSelectedLiveApplications(current =>
-                        checked
-                          ? current.filter(id => id !== task.id)
-                          : [...current, task.id],
-                      )}
+                      onChange={() => setSelectedLiveApplications(current => {
+                        if (checked) return current.filter(id => id !== task.id)
+                        if (task.id === 'configured_queue') {
+                          return [...current.filter(id => id !== 'vertical_queue'), task.id]
+                        }
+                        if (task.id === 'vertical_queue') {
+                          return [...current.filter(id => id !== 'configured_queue'), task.id]
+                        }
+                        return [...current, task.id]
+                      })}
                       className="mt-1 size-4 rounded border-input accent-primary"
                     />
                     <span>
@@ -860,6 +887,12 @@ const IMPORTANT_LIVE_METRICS: Record<LiveTaskId, MetricDefinition[]> = {
     { key: 'queue_wait_seconds', label: 'زمان انتظار تقریبی', value_type: 'number', unit: 'ثانیه', aggregation: 'average', display: 'chart', availability: 'both' },
     { key: 'queue_speed', label: 'سرعت حرکت صف', value_type: 'number', unit: 'px/s', aggregation: 'average', display: 'chart', availability: 'both' },
   ],
+  configured_queue: [
+    { key: 'queue_length', label: 'افراد داخل صف', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'chart', availability: 'both' },
+    { key: 'queue_wait_seconds', label: 'زمان انتظار تقریبی', value_type: 'number', unit: 'ثانیه', aggregation: 'average', display: 'chart', availability: 'both' },
+    { key: 'queue_speed', label: 'میانگین سرعت افراد صف', value_type: 'number', unit: 'px/s', aggregation: 'average', display: 'chart', availability: 'both' },
+    { key: 'queue_details', label: 'جزئیات هر خط صف', value_type: 'table', unit: null, aggregation: 'current', display: 'table', availability: 'both' },
+  ],
   restricted_area: [
     { key: 'restricted_occupancy', label: 'افراد داخل محدوده', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'status', availability: 'both' },
     { key: 'restricted_entries', label: 'ورود به محدوده', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
@@ -946,6 +979,9 @@ function MetricWidget({ definition, value, history }: { definition: MetricDefini
   if (definition.key === 'top_crowded_regions') {
     return <CrowdedRegionsWidget label={definition.label} value={value} />
   }
+  if (definition.key === 'queue_details') {
+    return <QueueDetailsWidget label={definition.label} value={value} />
+  }
   if (definition.display === 'table' && typeof value === 'object' && !Array.isArray(value)) {
     return (
       <div className="rounded-lg border bg-muted/20 p-3 sm:col-span-2">
@@ -961,6 +997,32 @@ function MetricWidget({ definition, value, history }: { definition: MetricDefini
       <p className="text-xs text-muted-foreground">{definition.label}</p>
       <p className="mt-1 text-lg font-semibold" dir="ltr">{formatDisplayValue(value)}{definition.unit ? ` ${definition.unit}` : ''}</p>
       {definition.display === 'chart' && history.length > 1 && <Sparkline values={history} />}
+    </div>
+  )
+}
+
+function QueueDetailsWidget({ label, value }: { label: string; value: unknown }) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const queues = Object.entries(value as Record<string, unknown>)
+  if (queues.length === 0) return null
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3 sm:col-span-2 lg:col-span-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2" dir="ltr">
+        {queues.map(([queueId, raw]) => {
+          const details = raw && typeof raw === 'object' && !Array.isArray(raw)
+            ? raw as Record<string, unknown>
+            : {}
+          return (
+            <div key={queueId} className="rounded border bg-background px-3 py-2 text-xs">
+              <p className="font-semibold">{queueId}</p>
+              <p className="mt-1 text-muted-foreground">
+                {formatDisplayValue(details.people)} people · {formatDisplayValue(details.average_speed_pixels_per_second)} px/s
+              </p>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

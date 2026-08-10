@@ -63,7 +63,12 @@ export function RegionsClient() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: RegionFormValues }) => {
-      const res = await send(`/api/regions/${id}`, 'PATCH', { name: data.name, description: data.description || null, color: data.color || null })
+      const res = await send(`/api/regions/${id}`, 'PATCH', {
+        name: data.name,
+        description: data.description || null,
+        color: data.color || null,
+        type: data.type,
+      })
       if (!res.ok) throw new Error(await msg(res, 'خطا در ویرایش منطقه'))
       return res.json()
     },
@@ -147,6 +152,7 @@ export function RegionsClient() {
             <TableRow>
               <TableHead>نام منطقه</TableHead>
               <TableHead>بازار</TableHead>
+              <TableHead>نوع</TableHead>
               <TableHead>دوربین‌ها</TableHead>
               <TableHead>غرفه‌ها</TableHead>
               <TableHead>تاریخ ثبت</TableHead>
@@ -163,6 +169,11 @@ export function RegionsClient() {
                   </span>
                 </TableCell>
                 <TableCell>{region.market?.name ?? '—'}</TableCell>
+                <TableCell>
+                  <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                    {region.type === 'QUEUE' ? 'خط صف' : 'منطقه ممنوعه'}
+                  </span>
+                </TableCell>
                 <TableCell>{region.cameraCount}</TableCell>
                 <TableCell>{region.boothCount}</TableCell>
                 <TableCell>{new Date(region.createdAt).toLocaleDateString('fa-IR')}</TableCell>
@@ -235,6 +246,7 @@ export function RegionsClient() {
                   description: editTarget.description ?? '',
                   marketId: editTarget.marketId,
                   color: editTarget.color ?? '#10b981',
+                  type: editTarget.type,
                 }}
                 onSubmit={data => updateMutation.mutate({ id: editTarget.id, data })}
                 onCancel={() => setEditTarget(null)}
@@ -255,6 +267,7 @@ function normalize(data: RegionFormValues) {
     description: data.description || undefined,
     marketId: data.marketId,
     color: data.color || undefined,
+    type: data.type,
   }
 }
 

@@ -7,6 +7,8 @@ const hexColor = z
   .optional()
   .or(z.literal(''))
 
+export const regionTypeSchema = z.enum(['RESTRICTED_AREA', 'QUEUE'])
+
 // ─── Region CRUD ─────────────────────────────────────────────────────────────
 
 export const createRegionSchema = z.object({
@@ -14,12 +16,14 @@ export const createRegionSchema = z.object({
   description: z.string().max(500).optional().or(z.literal('')),
   marketId: z.string().min(1, 'انتخاب بازار الزامی است'),
   color: hexColor,
+  type: regionTypeSchema.default('RESTRICTED_AREA'),
 })
 
 export const updateRegionSchema = z.object({
   name: z.string().min(1, 'نام منطقه الزامی است').max(100).optional(),
   description: z.string().max(500).optional().nullable(),
   color: hexColor.nullable(),
+  type: regionTypeSchema.optional(),
   // marketId is intentionally immutable after creation (scope + mapping integrity).
 })
 
@@ -57,6 +61,7 @@ export const importRegionSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   marketId: z.string().min(1),
   color: z.string().regex(/^#([0-9a-fA-F]{6})$/).optional().nullable(),
+  type: regionTypeSchema.default('RESTRICTED_AREA'),
   cameraMappings: z
     .array(
       z.object({

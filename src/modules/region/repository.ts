@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import type { Point } from './geometry'
 import type { CreateRegionDto, UpdateRegionDto } from './schema'
 import type { CameraRegionMapping, RegionBoothLink, RegionDetail, RegionSummary } from './types'
+import type { RegionType } from './types'
 
 // ─── Prisma query fragments ──────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ function toSummary(r: SummaryRow): RegionSummary {
     name: r.name,
     description: r.description,
     color: r.color,
+    type: r.type,
     marketId: r.marketId,
     market: r.market,
     cameraCount: r._count.cameraRegions,
@@ -78,6 +80,7 @@ function toDetail(r: DetailRow): RegionDetail {
     name: r.name,
     description: r.description,
     color: r.color,
+    type: r.type,
     marketId: r.marketId,
     market: r.market,
     cameraCount: r.cameraRegions.length,
@@ -134,11 +137,12 @@ export const regionRepository = {
   findRaw: (id: string) => db.region.findFirst({ where: { id, deletedAt: null } }),
 
   /** Case-insensitive name uniqueness within a market (excluding optional id). */
-  nameTaken: (marketId: string, name: string, excludeId?: string) =>
+  nameTaken: (marketId: string, name: string, type: RegionType, excludeId?: string) =>
     db.region
       .findFirst({
         where: {
           marketId,
+          type,
           name: { equals: name, mode: 'insensitive' },
           deletedAt: null,
           ...(excludeId ? { NOT: { id: excludeId } } : {}),
@@ -154,6 +158,7 @@ export const regionRepository = {
         description: data.description || null,
         marketId: data.marketId,
         color: data.color || null,
+        type: data.type,
       },
     }),
 
@@ -164,6 +169,7 @@ export const regionRepository = {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.description !== undefined ? { description: data.description || null } : {}),
         ...(data.color !== undefined ? { color: data.color || null } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
       },
     }),
 
@@ -291,9 +297,9 @@ export const regionRepository = {
       orderBy: { createdAt: 'asc' },
     }),
 
-  findByNameInMarket: (marketId: string, name: string) =>
+  findByNameInMarket: (marketId: string, name: string, type: RegionType) =>
     db.region.findFirst({
-      where: { marketId, name: { equals: name, mode: 'insensitive' }, deletedAt: null },
+      where: { marketId, type, name: { equals: name, mode: 'insensitive' }, deletedAt: null },
     }),
 
   // ─── Scope helpers (mirrors other modules) ────────────────────────────────
