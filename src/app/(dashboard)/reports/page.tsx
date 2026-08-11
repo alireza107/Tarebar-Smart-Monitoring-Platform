@@ -1,5 +1,3 @@
-import { ReportsClient } from './_components/reports-client'
+import { ManagementReportsClient } from './_components/management-reports-client'
+export default function Page() { return <ManagementReportsClient /> }
 
-export default function ReportsPage() {
-  return <ReportsClient />
-}
