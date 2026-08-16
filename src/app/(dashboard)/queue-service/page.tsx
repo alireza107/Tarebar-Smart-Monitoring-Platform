@@ -1,2 +1,2 @@
-import { AnalyticsSectionClient } from '@/components/management/analytics-section-client'
-export default function Page() { return <AnalyticsSectionClient kind="queue" /> }
+import { QueueAnalyticsClient } from '@/components/management/queue-analytics-client'
+export default function Page() { return <QueueAnalyticsClient /> }

@@ -1,2 +1,2 @@
-import { AnalyticsSectionClient } from '@/components/management/analytics-section-client'
-export default function Page() { return <AnalyticsSectionClient kind="traffic" /> }
+import { PeopleFlowClient } from '@/components/management/people-flow-client'
+export default function Page() { return <PeopleFlowClient /> }

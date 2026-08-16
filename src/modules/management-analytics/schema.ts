@@ -23,3 +23,9 @@ export const managementFiltersSchema = z.object({
 
 export type ManagementFiltersInput = z.infer<typeof managementFiltersSchema>
 
+export const analyticalModuleFiltersSchema = z.intersection(
+  managementFiltersSchema,
+  z.object({ bucket: z.enum(['hour', 'day']).default('hour') }),
+)
+
+export type AnalyticalModuleFiltersInput = z.infer<typeof analyticalModuleFiltersSchema>
