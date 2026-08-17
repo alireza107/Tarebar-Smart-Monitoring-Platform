@@ -76,6 +76,31 @@ export const cameraRepository = {
   softDelete: (id: string) =>
     db.camera.update({ where: { id }, data: { deletedAt: new Date() } }),
 
+  // Sets streamUrl to the MediaMTX path the video-analytics service is
+  // republishing the uploaded video to. sourceType is only ever set here (as
+  // a side effect of an actual successful upload), never accepted as a
+  // freeform field on the regular update() call.
+  attachVideoSource: (id: string, data: { streamUrl: string; videoFileName: string }) =>
+    db.camera.update({
+      where: { id },
+      data: {
+        streamUrl: data.streamUrl,
+        sourceType: 'VIDEO_FILE',
+        videoFileName: data.videoFileName,
+        videoUploadedAt: new Date(),
+        // Let the next health-probe cycle decide; don't guess ONLINE here.
+        status: 'UNKNOWN',
+      },
+      include,
+    }),
+
+  detachVideoSource: (id: string) =>
+    db.camera.update({
+      where: { id },
+      data: { sourceType: 'RTSP', videoFileName: null, videoUploadedAt: null },
+      include,
+    }),
+
   getUserFieldIds: (userId: string) =>
     db.userScope
       .findMany({ where: { userId, scopeType: 'FIELD' }, select: { fieldId: true } })

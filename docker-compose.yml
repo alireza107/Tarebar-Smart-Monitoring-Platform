@@ -83,9 +83,12 @@ services:
       ANALYTICS_EXPECTED_SAMPLES_PER_MINUTE: ${ANALYTICS_EXPECTED_SAMPLES_PER_MINUTE:-30}
       ANALYTICS_ROLLUP_INTERVAL_SECONDS: ${ANALYTICS_ROLLUP_INTERVAL_SECONDS:-60}
       ANALYTICS_TIMEZONE: ${ANALYTICS_TIMEZONE:-Asia/Tehran}
+      MEDIAMTX_RTSP_URL: rtsp://mediamtx:8554
+      VIRTUAL_CAMERAS_DIR: /app/output/virtual-cameras
     volumes:
       - analytics-jobs:/app/output/dashboard
       - analytics-outbox:/app/output/outbox
+      - virtual-camera-videos:/app/output/virtual-cameras
       - ../video_analytics/outputs/synthetic:/app/outputs/synthetic:ro
     depends_on:
       db:
@@ -97,3 +100,4 @@ volumes:
   pgdata:
   analytics-jobs:
   analytics-outbox:
+  virtual-camera-videos:

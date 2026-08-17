@@ -7,6 +7,7 @@ import Link from 'next/link'
 import {
   BrainCircuit,
   Camera,
+  FileVideo,
   Flame,
   MapPin,
   ExternalLink,
@@ -248,6 +249,12 @@ export function CameraCard({ camera }: CameraCardProps) {
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
           <MapPin className="h-3 w-3 shrink-0" />
           <span>{locationLabel(camera)}</span>
+          {camera.sourceType === 'VIDEO_FILE' && (
+            <span className="mr-auto inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              <FileVideo className="h-2.5 w-2.5" />
+              ویدیو آپلودی
+            </span>
+          )}
         </div>
         {!camera.streamUrl && (
           <p className="text-[10px] text-muted-foreground/50 select-none">بدون آدرس استریم</p>

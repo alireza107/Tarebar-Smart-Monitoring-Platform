@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { CameraForm, type CameraFormValues } from "./camera-form";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
-import type { Camera } from "@/modules/camera/types";
+import type { Camera, CameraSourceType } from "@/modules/camera/types";
 import { usePermissions } from "@/hooks/use-permissions";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -28,6 +28,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   OFFLINE: { label: "آفلاین", className: "bg-red-100 text-red-700" },
   UNKNOWN: { label: "نامشخص", className: "bg-gray-100 text-gray-500" },
 };
+
+type VideoSelection = { sourceType: CameraSourceType; file: File | null };
 
 function locationLabel(camera: Camera): string {
   if (camera.booth) return `غرفه ${camera.booth.number}`;
@@ -43,10 +45,15 @@ async function fetchCameras(): Promise<Camera[]> {
   return json.data;
 }
 
-async function createCamera(data: CameraFormValues): Promise<Camera> {
+async function createCamera(
+  data: CameraFormValues,
+  sourceType: CameraSourceType,
+): Promise<Camera> {
   const payload = {
     ...data,
-    streamUrl: data.streamUrl || undefined,
+    // A VIDEO_FILE camera's streamUrl is set by uploadCameraVideo() below,
+    // once the video-analytics service reports where it republished the file.
+    streamUrl: sourceType === "RTSP" ? data.streamUrl || undefined : undefined,
     fieldId: data.fieldId || undefined,
     marketId: data.marketId || undefined,
     boothId: data.boothId || undefined,
@@ -64,21 +71,45 @@ async function createCamera(data: CameraFormValues): Promise<Camera> {
 async function updateCamera(
   id: string,
   data: CameraFormValues,
+  sourceType: CameraSourceType,
 ): Promise<Camera> {
-  const payload = {
+  const payload: Record<string, unknown> = {
     name: data.name,
-    streamUrl: data.streamUrl || null,
     status: data.status,
     fieldId: data.fieldId || null,
     marketId: data.marketId || null,
     boothId: data.boothId || null,
   };
+  // Only include streamUrl when the RTSP form is actually submitted — the API
+  // treats its presence as "the user wants RTSP mode" and stops/detaches any
+  // video-file publisher. Omitting it here on a plain VIDEO_FILE edit (name,
+  // location, ...) keeps the existing virtual camera running untouched.
+  if (sourceType === "RTSP") {
+    payload.streamUrl = data.streamUrl || null;
+  }
   const res = await fetch(`/api/cameras/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("خطا در ویرایش دوربین");
+  const json = await res.json();
+  return json.data;
+}
+
+async function uploadCameraVideo(id: string, file: File): Promise<Camera> {
+  const formData = new FormData();
+  formData.append("video", file);
+  const res = await fetch(`/api/cameras/${id}/video`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(
+      typeof body?.error === "string" ? body.error : "خطا در بارگذاری ویدیو",
+    );
+  }
   const json = await res.json();
   return json.data;
 }
@@ -105,7 +136,19 @@ export function CamerasClient() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createCamera,
+    mutationFn: async ({
+      data,
+      video,
+    }: {
+      data: CameraFormValues;
+      video: VideoSelection;
+    }) => {
+      const camera = await createCamera(data, video.sourceType);
+      if (video.sourceType === "VIDEO_FILE" && video.file) {
+        return uploadCameraVideo(camera.id, video.file);
+      }
+      return camera;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cameras"] });
       setCreateOpen(false);
@@ -115,8 +158,21 @@ export function CamerasClient() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: CameraFormValues }) =>
-      updateCamera(id, data),
+    mutationFn: async ({
+      id,
+      data,
+      video,
+    }: {
+      id: string;
+      data: CameraFormValues;
+      video: VideoSelection;
+    }) => {
+      const camera = await updateCamera(id, data, video.sourceType);
+      if (video.sourceType === "VIDEO_FILE" && video.file) {
+        return uploadCameraVideo(id, video.file);
+      }
+      return camera;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cameras"] });
       setEditTarget(null);
@@ -183,11 +239,12 @@ export function CamerasClient() {
                     </span>
                   </TableCell>
                   <TableCell>{locationLabel(camera)}</TableCell>
-                  <TableCell
-                    className="max-w-50 truncate text-xs text-gray-500"
-                    dir="ltr"
-                  >
-                    {camera.streamUrl ?? "—"}
+                  <TableCell className="max-w-50 truncate text-xs text-gray-500">
+                    {camera.sourceType === "VIDEO_FILE" ? (
+                      <span dir="rtl">ویدیو آپلودی: {camera.videoFileName ?? "—"}</span>
+                    ) : (
+                      <span dir="ltr">{camera.streamUrl ?? "—"}</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {new Date(camera.createdAt).toLocaleDateString("fa-IR")}
@@ -252,7 +309,7 @@ export function CamerasClient() {
               <p className="text-sm text-red-500">{mutationError}</p>
             )}
             <CameraForm
-              onSubmit={(data) => createMutation.mutate(data)}
+              onSubmit={(data, video) => createMutation.mutate({ data, video })}
               onCancel={() => setCreateOpen(false)}
               isPending={createMutation.isPending}
               submitLabel="ایجاد"
@@ -283,14 +340,17 @@ export function CamerasClient() {
               <CameraForm
                 defaultValues={{
                   name: editTarget.name,
-                  streamUrl: editTarget.streamUrl ?? "",
+                  streamUrl: editTarget.sourceType === "RTSP" ? editTarget.streamUrl ?? "" : "",
                   status: editTarget.status,
                   fieldId: editTarget.fieldId ?? "",
                   marketId: editTarget.marketId ?? "",
                   boothId: editTarget.boothId ?? "",
                 }}
-                onSubmit={(data) =>
-                  updateMutation.mutate({ id: editTarget.id, data })
+                defaultSourceType={editTarget.sourceType}
+                currentVideoFileName={editTarget.videoFileName}
+                currentVideoUploadedAt={editTarget.videoUploadedAt}
+                onSubmit={(data, video) =>
+                  updateMutation.mutate({ id: editTarget.id, data, video })
                 }
                 onCancel={() => setEditTarget(null)}
                 isPending={updateMutation.isPending}

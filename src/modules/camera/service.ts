@@ -26,4 +26,9 @@ export const cameraService = {
   update: (id: string, data: UpdateCameraDto) => cameraRepository.update(id, data),
 
   delete: (id: string) => cameraRepository.softDelete(id),
+
+  attachVideoSource: (id: string, data: { streamUrl: string; videoFileName: string }) =>
+    cameraRepository.attachVideoSource(id, data),
+
+  detachVideoSource: (id: string) => cameraRepository.detachVideoSource(id),
 }

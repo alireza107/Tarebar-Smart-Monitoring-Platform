@@ -21,6 +21,11 @@ enum CameraStatus {
   UNKNOWN
 }
 
+enum CameraSourceType {
+  RTSP
+  VIDEO_FILE
+}
+
 enum ScopeType {
   FIELD
   MARKET
@@ -169,16 +174,23 @@ model Booth {
 }
 
 model Camera {
-  id        String       @id @default(cuid())
-  name      String
-  streamUrl String?
-  status    CameraStatus @default(UNKNOWN)
-  fieldId   String?
-  marketId  String?
-  boothId   String?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  deletedAt DateTime?
+  id         String            @id @default(cuid())
+  name       String
+  streamUrl  String?
+  status     CameraStatus      @default(UNKNOWN)
+  sourceType CameraSourceType  @default(RTSP)
+  fieldId    String?
+  marketId   String?
+  boothId    String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deletedAt  DateTime?
+
+  // Set only for sourceType VIDEO_FILE, purely for display — streamUrl (the
+  // MediaMTX path the uploaded video is republished to) stays authoritative
+  // for every consumer (health probe, live preview, analytics start).
+  videoFileName   String?
+  videoUploadedAt DateTime?
 
   // Last known frame, captured client-side while the live stream is healthy.
   // Lets the region polygon editor show a reference image when the live feed

@@ -1,10 +1,14 @@
 export type CameraStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN'
+export type CameraSourceType = 'RTSP' | 'VIDEO_FILE'
 
 export interface Camera {
   id: string
   name: string
   streamUrl: string | null
   status: CameraStatus
+  sourceType: CameraSourceType
+  videoFileName: string | null
+  videoUploadedAt: Date | null
   fieldId: string | null
   marketId: string | null
   boothId: string | null

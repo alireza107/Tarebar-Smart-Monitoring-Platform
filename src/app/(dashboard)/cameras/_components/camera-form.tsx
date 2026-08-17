@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,6 +8,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { CameraSourceType } from '@/modules/camera/types'
+
+const ALLOWED_VIDEO_EXTENSIONS = '.mp4,.mov,.avi,.mkv,.webm,.m4v'
 
 const cameraFormSchema = z.object({
   name: z.string().min(1, 'نام دوربین الزامی است').max(100),
@@ -27,17 +31,41 @@ const statusLabels: Record<string, string> = {
 
 interface CameraFormProps {
   defaultValues?: Partial<CameraFormValues>
-  onSubmit: (data: CameraFormValues) => void
+  defaultSourceType?: CameraSourceType
+  currentVideoFileName?: string | null
+  currentVideoUploadedAt?: string | Date | null
+  onSubmit: (data: CameraFormValues, video: { sourceType: CameraSourceType; file: File | null }) => void
   onCancel: () => void
   isPending: boolean
   submitLabel?: string
 }
 
-export function CameraForm({ defaultValues, onSubmit, onCancel, isPending, submitLabel = 'ذخیره' }: CameraFormProps) {
+export function CameraForm({
+  defaultValues,
+  defaultSourceType = 'RTSP',
+  currentVideoFileName,
+  currentVideoUploadedAt,
+  onSubmit,
+  onCancel,
+  isPending,
+  submitLabel = 'ذخیره',
+}: CameraFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<CameraFormValues>({
     resolver: zodResolver(cameraFormSchema),
     defaultValues: { status: 'UNKNOWN', ...defaultValues },
   })
+  const [sourceType, setSourceType] = useState<CameraSourceType>(defaultSourceType)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [videoFileError, setVideoFileError] = useState<string | null>(null)
+
+  function submit(data: CameraFormValues) {
+    if (sourceType === 'VIDEO_FILE' && !videoFile && !currentVideoFileName) {
+      setVideoFileError('انتخاب فایل ویدیو الزامی است')
+      return
+    }
+    setVideoFileError(null)
+    onSubmit(data, { sourceType, file: videoFile })
+  }
 
   const { data: fields = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['fields-select'],
@@ -55,7 +83,7 @@ export function CameraForm({ defaultValues, onSubmit, onCancel, isPending, submi
   })
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(submit)} className="space-y-4">
       <div className="space-y-1">
         <Label htmlFor="name">نام دوربین</Label>
         <Input id="name" {...register('name')} placeholder="مثال: دوربین ورودی" />
@@ -63,13 +91,58 @@ export function CameraForm({ defaultValues, onSubmit, onCancel, isPending, submi
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="streamUrl">آدرس RTSP پردازش (اختیاری)</Label>
-        <Input id="streamUrl" {...register('streamUrl')} placeholder="rtsp://mediamtx:8554/mobile-1" dir="ltr" />
-        {errors.streamUrl && <p className="text-sm text-red-500">{errors.streamUrl.message}</p>}
-        <p className="text-xs text-muted-foreground">
-          برای Larix مسیر MediaMTX را وارد کنید؛ همین آدرس بدون تغییر به سرویس تحلیل تصویر داده می‌شود.
-        </p>
+        <Label>منبع دوربین</Label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={sourceType === 'RTSP' ? 'default' : 'outline'}
+            onClick={() => setSourceType('RTSP')}
+          >
+            آدرس RTSP
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={sourceType === 'VIDEO_FILE' ? 'default' : 'outline'}
+            onClick={() => setSourceType('VIDEO_FILE')}
+          >
+            آپلود ویدیو (دوربین مجازی)
+          </Button>
+        </div>
       </div>
+
+      {sourceType === 'RTSP' ? (
+        <div className="space-y-1">
+          <Label htmlFor="streamUrl">آدرس RTSP پردازش (اختیاری)</Label>
+          <Input id="streamUrl" {...register('streamUrl')} placeholder="rtsp://mediamtx:8554/mobile-1" dir="ltr" />
+          {errors.streamUrl && <p className="text-sm text-red-500">{errors.streamUrl.message}</p>}
+          <p className="text-xs text-muted-foreground">
+            برای Larix مسیر MediaMTX را وارد کنید؛ همین آدرس بدون تغییر به سرویس تحلیل تصویر داده می‌شود.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label htmlFor="video">فایل ویدیو</Label>
+          <Input
+            id="video"
+            type="file"
+            accept={ALLOWED_VIDEO_EXTENSIONS}
+            onChange={e => setVideoFile(e.target.files?.[0] ?? null)}
+          />
+          {videoFileError && <p className="text-sm text-red-500">{videoFileError}</p>}
+          {currentVideoFileName && (
+            <p className="text-xs text-muted-foreground" dir="ltr">
+              فایل فعلی: {currentVideoFileName}
+              {currentVideoUploadedAt && ` — ${new Date(currentVideoUploadedAt).toLocaleString('fa-IR')}`}
+              {' — برای جایگزینی فایل جدیدی انتخاب کنید.'}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            ویدیو به‌صورت مداوم و حلقه‌ای در سرویس تحلیل تصویر پخش می‌شود و دوربین مانند یک دوربین زنده رفتار می‌کند.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1">
         <Label htmlFor="status">وضعیت</Label>
