@@ -42,7 +42,10 @@ export function GlobalFilterBar({
               disabled={isLoading}
               value={selectedLocation}
               onChange={(event) => {
-                const [type, id] = event.target.value.split(':') as [ManagementLocationType, string | undefined]
+                const value = event.target.value
+                const separatorIndex = value.indexOf(':')
+                const type = (separatorIndex === -1 ? value : value.slice(0, separatorIndex)) as ManagementLocationType
+                const id = separatorIndex === -1 ? undefined : value.slice(separatorIndex + 1)
                 if (onLocationChange) onLocationChange(type, id)
                 else filters.setLocation(type, id)
               }}

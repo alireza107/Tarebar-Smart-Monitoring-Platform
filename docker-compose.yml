@@ -86,6 +86,7 @@ services:
     volumes:
       - analytics-jobs:/app/output/dashboard
       - analytics-outbox:/app/output/outbox
+      - ../video_analytics/outputs/synthetic:/app/outputs/synthetic:ro
     depends_on:
       db:
         condition: service_healthy
