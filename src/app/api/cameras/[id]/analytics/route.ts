@@ -83,7 +83,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           })),
           queueMappings.map(mapping => ({
             id: `queue-${mapping.region.name}-${mapping.region.id.slice(-6)}`,
-          points: mapping.mainPolygon as unknown as Point[],
+            points: mapping.mainPolygon as unknown as Point[],
           })),
         )
       : undefined

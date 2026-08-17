@@ -110,12 +110,12 @@ const LIVE_TASKS = [
   {
     id: 'vertical_queue',
     label: 'پایش خودکار صف',
-    description: 'طول صف، زمان انتظار و سرعت حرکت صف',
+    description: 'تشخیص خودکار صف و گزارش طول، زمان انتظار و سرعت حرکت',
   },
   {
     id: 'configured_queue',
     label: 'پایش صف تعریف‌شده',
-    description: 'تعداد و سرعت افراد داخل خط صف تعریف‌شده',
+    description: 'شمارش افراد داخل خط صف ثبت‌شده این دوربین در بخش مناطق',
   },
   {
     id: 'restricted_area',
@@ -369,13 +369,8 @@ export function VideoAnalyticsClient({
       setSelectedLiveApplications(current => current.filter(id => id !== 'restricted_area'))
     }
   }, [selectedLiveCamera?.id, selectedCameraHasRestrictedArea])
-
   useEffect(() => {
-    if (selectedCameraHasQueue) {
-      setSelectedLiveApplications(current => current.includes('configured_queue')
-        ? current.filter(id => id !== 'vertical_queue')
-        : [...current.filter(id => id !== 'vertical_queue'), 'configured_queue'])
-    } else {
+    if (!selectedCameraHasQueue) {
       setSelectedLiveApplications(current => current.filter(id => id !== 'configured_queue'))
     }
   }, [selectedLiveCamera?.id, selectedCameraHasQueue])
@@ -556,10 +551,16 @@ export function VideoAnalyticsClient({
             </div>
             <p className="text-xs text-muted-foreground">
               همه تحلیل‌های انتخاب‌شده در یک پردازش مشترک اجرا می‌شوند؛ تشخیص و ردیابی فقط یک‌بار انجام می‌شود.
+              پایش خودکار صف و پایش صف تعریف‌شده را نمی‌توان همزمان در یک پردازش انتخاب کرد.
             </p>
             {!selectedCameraHasRestrictedArea && selectedLiveCamera && (
               <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                 برای فعال‌سازی تشخیص ناحیه ممنوعه، ابتدا در بخش مناطق یک محدوده برای این دوربین رسم کنید.
+              </p>
+            )}
+            {!selectedCameraHasQueue && selectedLiveCamera && (
+              <p className="rounded-md border border-sky-200 bg-sky-50 p-2 text-xs text-sky-900">
+                برای پایش صف تعریف‌شده، ابتدا در بخش مناطق یک خط صف برای این دوربین ثبت کنید.
               </p>
             )}
           </div>

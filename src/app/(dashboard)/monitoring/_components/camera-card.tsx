@@ -312,8 +312,7 @@ export function CameraCard({ camera }: CameraCardProps) {
             </div>
 
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
-              ناحیه ممنوعه و صف پیکربندی‌شده به هندسه مخصوص هر دوربین نیاز دارند و پس از ثبت
-              محدوده‌های دوربین قابل فعال‌سازی خواهند بود.
+              ناحیه ممنوعه و صف تعریف‌شده پس از ثبت محدوده‌های دوربین در بخش مناطق قابل فعال‌سازی هستند.
             </div>
 
             <DialogFooter>

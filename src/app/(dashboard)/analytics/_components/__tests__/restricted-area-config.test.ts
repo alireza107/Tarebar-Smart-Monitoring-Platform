@@ -84,6 +84,29 @@ describe('buildCameraAnalyticsYaml', () => {
     expect(yaml).toContain('      overflow_threshold: 10')
     expect(yaml).toContain('        point: [0.4, 0.3]')
   })
+
+  it('serializes saved queue regions without restricted zones', () => {
+    const yaml = buildCameraAnalyticsYaml(
+      'camera-01',
+      'Entrance',
+      [],
+      [{
+        id: 'queue-line',
+        points: [
+          { x: 0.12, y: 0.42 },
+          { x: 0.54, y: 0.42 },
+          { x: 0.61, y: 0.90 },
+          { x: 0.08, y: 0.90 },
+        ],
+      }],
+    )
+
+    expect(yaml).toContain('source: live-stream')
+    expect(yaml).not.toContain('restricted_area')
+    expect(yaml).toContain('    - queue')
+    expect(yaml).toContain('    - id: "queue-line"')
+    expect(yaml).toContain('        - [0.12, 0.42]')
+  })
 })
 
 describe('buildRestrictedAreasCameraYaml', () => {
