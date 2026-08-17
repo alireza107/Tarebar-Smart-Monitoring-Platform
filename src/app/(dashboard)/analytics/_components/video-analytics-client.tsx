@@ -153,7 +153,7 @@ type ExtractedFrame = {
   aspectRatio: number
 }
 
-function extractFirstVideoFrame(file: File): Promise<ExtractedFrame> {
+function extractFirstVideoFrameInBrowser(file: File): Promise<ExtractedFrame> {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file)
     const video = document.createElement('video')
@@ -201,6 +201,40 @@ function extractFirstVideoFrame(file: File): Promise<ExtractedFrame> {
     video.src = objectUrl
     video.load()
   })
+}
+
+async function extractFirstVideoFrameViaServer(file: File): Promise<ExtractedFrame> {
+  const formData = new FormData()
+  formData.append('video', file)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/api/v1/frames/first`, { method: 'POST', body: formData })
+  } catch {
+    throw new Error(`سرویس تحلیل ویدیو در ${API_BASE} در دسترس نیست`)
+  }
+  if (!response.ok) {
+    let message = 'سرویس نتوانست فریم اول این ویدیو را استخراج کند.'
+    try {
+      const body = await response.json()
+      if (typeof body.detail === 'string') message = body.detail
+    } catch {}
+    throw new Error(message)
+  }
+  const body = (await response.json()) as {
+    data: { data_url: string; aspect_ratio: number }
+  }
+  return { dataUrl: body.data.data_url, aspectRatio: body.data.aspect_ratio }
+}
+
+// Some codecs (e.g. HEVC-in-MP4) are accepted by the backend's OpenCV
+// pipeline but can't be decoded by the browser's <video> element. Fall back
+// to server-side extraction so the polygon editor still gets a frame.
+async function extractFirstVideoFrame(file: File): Promise<ExtractedFrame> {
+  try {
+    return await extractFirstVideoFrameInBrowser(file)
+  } catch {
+    return extractFirstVideoFrameViaServer(file)
+  }
 }
 
 const EMPTY_RESTRICTED_AREA: PolygonValue = {
