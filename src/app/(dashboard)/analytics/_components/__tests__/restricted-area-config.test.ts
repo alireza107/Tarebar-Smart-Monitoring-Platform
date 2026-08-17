@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCameraAnalyticsYaml,
+  buildConfiguredQueueCameraYaml,
   buildRestrictedAreaCameraYaml,
   buildRestrictedAreasCameraYaml,
 } from '../restricted-area-config'
@@ -25,6 +26,39 @@ describe('buildRestrictedAreaCameraYaml', () => {
   it('rejects an incomplete polygon', () => {
     expect(() =>
       buildRestrictedAreaCameraYaml({
+        cameraId: 'camera-01',
+        points: [{ x: 0.1, y: 0.2 }, { x: 0.8, y: 0.2 }],
+      }),
+    ).toThrow('at least three points')
+  })
+})
+
+describe('buildConfiguredQueueCameraYaml', () => {
+  it('converts normalized dashboard points into configured-queue YAML', () => {
+    const yaml = buildConfiguredQueueCameraYaml({
+      cameraId: 'camera-01',
+      points: [
+        { x: 0.12, y: 0.42 },
+        { x: 0.54, y: 0.42 },
+        { x: 0.61, y: 0.90 },
+        { x: 0.08, y: 0.90 },
+      ],
+    })
+
+    expect(yaml).toContain('id: camera-01')
+    expect(yaml).toContain('    - queue')
+    expect(yaml).toContain('    - speed')
+    expect(yaml).toContain('  queues:')
+    expect(yaml).toContain('    - id: "queue-line"')
+    expect(yaml).toContain('      polygon:')
+    expect(yaml).toContain('        - [0.12, 0.42]')
+    expect(yaml).toContain('        point: [0.3375, 0.66]')
+    expect(yaml).toContain('      overflow_threshold: 10')
+  })
+
+  it('rejects an incomplete queue polygon', () => {
+    expect(() =>
+      buildConfiguredQueueCameraYaml({
         cameraId: 'camera-01',
         points: [{ x: 0.1, y: 0.2 }, { x: 0.8, y: 0.2 }],
       }),

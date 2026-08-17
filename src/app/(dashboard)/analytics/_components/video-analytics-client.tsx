@@ -22,7 +22,7 @@ import {
   PolygonEditor,
   type PolygonValue,
 } from '@/app/(dashboard)/regions/_components/polygon-editor'
-import { buildRestrictedAreaCameraYaml } from './restricted-area-config'
+import { buildConfiguredQueueCameraYaml, buildRestrictedAreaCameraYaml } from './restricted-area-config'
 import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
 import { derivePlaybackUrls } from '@/modules/camera/stream'
 import type { Camera as CameraType } from '@/modules/camera/types'
@@ -115,7 +115,7 @@ const LIVE_TASKS = [
   {
     id: 'configured_queue',
     label: 'پایش صف تعریف‌شده',
-    description: 'تعداد و سرعت افراد داخل خط‌های صف ثبت‌شده برای دوربین',
+    description: 'تعداد و سرعت افراد داخل خط صف تعریف‌شده',
   },
   {
     id: 'restricted_area',
@@ -237,9 +237,30 @@ async function extractFirstVideoFrame(file: File): Promise<ExtractedFrame> {
   }
 }
 
-const EMPTY_RESTRICTED_AREA: PolygonValue = {
+const EMPTY_DRAWN_REGION: PolygonValue = {
   mainPolygon: [],
   exclusionPolygons: [],
+}
+
+const DRAWN_REGION_APPLICATIONS = {
+  restricted_area: {
+    title: 'ناحیه محدود روی فریم اول',
+    description: 'حداقل سه نقطه روی تصویر انتخاب کنید. مقادیر نرمال‌شده به‌صورت خودکار به ماژول تشخیص ارسال می‌شود.',
+    incompleteError: 'ناحیه محدود باید حداقل سه رأس داشته باشد.',
+    className: 'border-emerald-200 bg-emerald-50/50',
+  },
+  configured_queue: {
+    title: 'خط صف روی فریم اول',
+    description: 'حداقل سه نقطه روی تصویر انتخاب کنید تا محدوده صف مشخص شود. تعداد افراد داخل صف و سرعت حرکت صف محاسبه می‌شود.',
+    incompleteError: 'خط صف باید حداقل سه رأس داشته باشد.',
+    className: 'border-sky-200 bg-sky-50/50',
+  },
+} as const
+
+type DrawnRegionApplicationId = keyof typeof DRAWN_REGION_APPLICATIONS
+
+function isDrawnRegionApplication(id: string): id is DrawnRegionApplicationId {
+  return id in DRAWN_REGION_APPLICATIONS
 }
 
 export function VideoAnalyticsClient({
@@ -257,7 +278,7 @@ export function VideoAnalyticsClient({
   const [firstFrame, setFirstFrame] = useState<ExtractedFrame | null>(null)
   const [isExtractingFrame, setIsExtractingFrame] = useState(false)
   const [frameError, setFrameError] = useState<string | null>(null)
-  const [restrictedArea, setRestrictedArea] = useState<PolygonValue>(EMPTY_RESTRICTED_AREA)
+  const [drawnRegion, setDrawnRegion] = useState<PolygonValue>(EMPTY_DRAWN_REGION)
   const [configurationError, setConfigurationError] = useState<string | null>(null)
   const [selectedLiveCameraId, setSelectedLiveCameraId] = useState('')
   const [selectedLiveApplications, setSelectedLiveApplications] = useState<LiveTaskId[]>([
@@ -269,7 +290,7 @@ export function VideoAnalyticsClient({
     let active = true
     setFirstFrame(null)
     setFrameError(null)
-    setRestrictedArea(EMPTY_RESTRICTED_AREA)
+    setDrawnRegion(EMPTY_DRAWN_REGION)
     setIsExtractingFrame(false)
     if (!videoFile) return () => { active = false }
 
@@ -372,7 +393,7 @@ export function VideoAnalyticsClient({
       setSelectedApplication('people_counting')
       setVideoFile(null)
       setFirstFrame(null)
-      setRestrictedArea(EMPTY_RESTRICTED_AREA)
+      setDrawnRegion(EMPTY_DRAWN_REGION)
       setConfigurationError(null)
       queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
       setSelectedJobId(response.data.id)
@@ -410,21 +431,26 @@ export function VideoAnalyticsClient({
     if (!data.get('max_frames')) data.delete('max_frames')
     setConfigurationError(null)
 
-    if (selectedApplication === 'restricted_area') {
+    if (isDrawnRegionApplication(selectedApplication)) {
       if (isExtractingFrame || !firstFrame) {
         setConfigurationError('ابتدا منتظر بمانید تا فریم اول ویدیو آماده شود.')
         return
       }
-      if (restrictedArea.mainPolygon.length < 3) {
-        setConfigurationError('ناحیه محدود باید حداقل سه رأس داشته باشد.')
+      if (drawnRegion.mainPolygon.length < 3) {
+        setConfigurationError(DRAWN_REGION_APPLICATIONS[selectedApplication].incompleteError)
         return
       }
       try {
         const cameraId = String(data.get('camera_id') ?? '')
-        const yaml = buildRestrictedAreaCameraYaml({
-          cameraId,
-          points: restrictedArea.mainPolygon,
-        })
+        const yaml = selectedApplication === 'restricted_area'
+          ? buildRestrictedAreaCameraYaml({
+              cameraId,
+              points: drawnRegion.mainPolygon,
+            })
+          : buildConfiguredQueueCameraYaml({
+              cameraId,
+              points: drawnRegion.mainPolygon,
+            })
         data.set(
           'camera_config',
           new File([yaml], 'camera.yaml', { type: 'application/yaml' }),
@@ -609,12 +635,12 @@ export function VideoAnalyticsClient({
             <Input id="max_frames" name="max_frames" type="number" min={1} placeholder="مثال: 300" dir="ltr" />
           </div>
 
-          {selectedApplication === 'restricted_area' && (
-            <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 lg:col-span-2">
+          {isDrawnRegionApplication(selectedApplication) && (
+            <div className={`space-y-3 rounded-lg border p-4 lg:col-span-2 ${DRAWN_REGION_APPLICATIONS[selectedApplication].className}`}>
               <div>
-                <Label>ناحیه محدود روی فریم اول</Label>
+                <Label>{DRAWN_REGION_APPLICATIONS[selectedApplication].title}</Label>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  حداقل سه نقطه روی تصویر انتخاب کنید. مقادیر نرمال‌شده به‌صورت خودکار به ماژول تشخیص ارسال می‌شود.
+                  {DRAWN_REGION_APPLICATIONS[selectedApplication].description}
                 </p>
               </div>
               {isExtractingFrame && (
@@ -625,8 +651,8 @@ export function VideoAnalyticsClient({
               {frameError && <p className="text-sm text-red-600">{frameError}</p>}
               {firstFrame && (
                 <PolygonEditor
-                  value={restrictedArea}
-                  onChange={setRestrictedArea}
+                  value={drawnRegion}
+                  onChange={setDrawnRegion}
                   backgroundUrl={firstFrame.dataUrl}
                   aspectRatio={firstFrame.aspectRatio}
                   allowExclusions={false}
@@ -638,7 +664,7 @@ export function VideoAnalyticsClient({
             </div>
           )}
 
-          {selectedApplication !== 'restricted_area' && (
+          {!isDrawnRegionApplication(selectedApplication) && (
           <div className="space-y-1.5 lg:col-span-2">
             <Label htmlFor="camera_config">
               تنظیمات دوربین YAML {selected?.requires_camera_config ? '(الزامی برای این برنامه)' : '(اختیاری)'}
@@ -736,6 +762,14 @@ function JobCard({
   const outputLabel = job.artifacts.heatmap_video
     ? 'ویدیوی نقشه حرارتی تراکم'
     : 'ویدیوی خروجی تحلیل'
+  const metricTasks = job.enabled_tasks.length > 0
+    ? job.enabled_tasks
+    : job.application_id === 'configured_queue'
+      ? [job.application_id]
+      : []
+  const applicationLabel = job.enabled_tasks.length > 0
+    ? job.enabled_tasks.map(taskId => LIVE_TASKS.find(task => task.id === taskId)?.label ?? taskId).join(' + ')
+    : LIVE_TASKS.find(task => task.id === job.application_id)?.label ?? job.application.name
   return (
     <article className={`overflow-hidden rounded-xl border bg-card shadow-sm ${selected ? 'ring-2 ring-primary/30' : ''}`}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
@@ -746,9 +780,7 @@ function JobCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {job.enabled_tasks.length > 0
-                ? job.enabled_tasks.map(taskId => LIVE_TASKS.find(task => task.id === taskId)?.label ?? taskId).join(' + ')
-                : job.application.name} · {job.camera_id}
+              {applicationLabel} · {job.camera_id}
               {job.enable_reid ? ' · OSNet ReID فعال' : ''}
             </p>
           </div>
@@ -795,8 +827,8 @@ function JobCard({
               />
             </div>
           )}
-          {job.enabled_tasks.length > 0 ? (
-            <LiveTaskMetrics tasks={job.enabled_tasks} live={live} history={history} />
+          {metricTasks.length > 0 ? (
+            <LiveTaskMetrics tasks={metricTasks} live={live} history={history} />
           ) : (
             <DynamicMetrics schema={job.application.metric_schema} live={live} history={history} phase="live" />
           )}
@@ -812,8 +844,8 @@ function JobCard({
             </div>
           )}
 
-          {job.enabled_tasks.length > 0 ? (
-            <LiveTaskMetrics tasks={job.enabled_tasks} live={live ?? job.live} history={history} />
+          {metricTasks.length > 0 ? (
+            <LiveTaskMetrics tasks={metricTasks} live={live ?? job.live} history={history} />
           ) : (
             <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
           )}

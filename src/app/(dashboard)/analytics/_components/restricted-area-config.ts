@@ -54,6 +54,36 @@ ${yamlPoints(points)}
 `
 }
 
+type ConfiguredQueueConfigOptions = {
+  cameraId: string
+  points: Point[]
+}
+
+export function buildConfiguredQueueCameraYaml({
+  cameraId,
+  points,
+}: ConfiguredQueueConfigOptions): string {
+  if (!/^[A-Za-z0-9_.-]{1,100}$/.test(cameraId)) {
+    throw new Error('Invalid camera ID')
+  }
+  if (points.length < 3) {
+    throw new Error('A queue line requires at least three points')
+  }
+
+  return `camera:
+  id: ${cameraId}
+  name: Uploaded video
+  source: uploaded-video
+
+analytics:
+  enabled:
+    - queue
+    - speed
+  queues:
+${renderQueueZone({ id: 'queue-line', points })}
+`
+}
+
 export function buildRestrictedAreasCameraYaml(
   cameraId: string,
   cameraName: string,
