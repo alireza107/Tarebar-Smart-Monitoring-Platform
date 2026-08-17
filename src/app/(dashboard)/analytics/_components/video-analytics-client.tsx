@@ -23,8 +23,7 @@ import {
   type PolygonValue,
 } from '@/app/(dashboard)/regions/_components/polygon-editor'
 import { buildConfiguredQueueCameraYaml, buildRestrictedAreaCameraYaml } from './restricted-area-config'
-import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
-import { derivePlaybackUrls } from '@/modules/camera/stream'
+import { CameraLivePreview } from './camera-live-preview'
 import type { Camera as CameraType } from '@/modules/camera/types'
 
 const API_BASE = (
@@ -346,9 +345,6 @@ export function VideoAnalyticsClient({
     () => liveCameras.find(camera => camera.id === selectedLiveCameraId) ?? liveCameras[0],
     [liveCameras, selectedLiveCameraId],
   )
-  const livePlaybackUrls = selectedLiveCamera
-    ? derivePlaybackUrls(selectedLiveCamera.streamUrl)
-    : null
 
   useEffect(() => {
     if (!selectedLiveCameraId && liveCameras[0]) setSelectedLiveCameraId(liveCameras[0].id)
@@ -566,12 +562,11 @@ export function VideoAnalyticsClient({
           </div>
         </div>
 
-        {livePlaybackUrls && (
+        {selectedLiveCamera && (
           <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-lg border bg-black">
-            <CameraStreamPlayer
-              key={selectedLiveCamera?.id}
-              whepSrc={livePlaybackUrls.whep}
-              hlsSrc={livePlaybackUrls.hls}
+            <CameraLivePreview
+              cameraId={selectedLiveCamera.id}
+              cameraName={selectedLiveCamera.name}
             />
           </div>
         )}
