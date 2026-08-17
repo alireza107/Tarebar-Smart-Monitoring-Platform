@@ -21,9 +21,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/events', label: 'رویدادها', roles: ALL_ROLES, group: 'analytics' },
   { href: '/compare-locations', label: 'مقایسه مکان‌ها', roles: ALL_ROLES, group: 'analytics' },
   { href: '/reports', label: 'گزارش‌ها', roles: ALL_ROLES, group: 'analytics' },
-  { href: '/locations', label: 'مکان‌ها', roles: ALL_ROLES, group: 'management' },
+  { href: '/locations', label: 'مدیریت نواحی', roles: ALL_ROLES, group: 'management' },
   { href: '/system-health', label: 'سلامت سامانه', roles: ALL_ROLES, group: 'system' },
-  { href: '/settings', label: 'تنظیمات', roles: ['ORG_ADMIN'], group: 'system' },
+  { href: '/settings', label: 'مدیریت دسترسی', roles: ['ORG_ADMIN'], group: 'management' },
 
   // Legacy administration routes stay reachable from Locations/Settings.
   { href: '/fields', label: 'میادین', roles: ['ORG_ADMIN'], hidden: true },

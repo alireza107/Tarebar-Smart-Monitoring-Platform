@@ -7,7 +7,7 @@ import { NAV_ITEMS } from '@/lib/nav-permissions'
 import type { Role } from '@/lib/permissions'
 import {
   Activity, BarChart3, BellRing, BrainCircuit, Building2, ChartNoAxesCombined,
-  Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor, Settings,
+  Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor, ShieldCheck,
   TimerReset,
 } from 'lucide-react'
 
@@ -24,12 +24,12 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   '/reports': BarChart3,
   '/locations': Building2,
   '/system-health': HeartPulse,
-  '/settings': Settings,
+  '/settings': ShieldCheck,
 }
 
 const GROUPS = [
   { id: 'analytics', label: 'تحلیل و عملیات' },
-  { id: 'management', label: 'مدیریت ساختار' },
+  { id: 'management', label: 'مدیریت ساختارها' },
   { id: 'system', label: 'سامانه' },
 ] as const
 

@@ -10,8 +10,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'نمای کلی', '/live-operations': 'عملیات زنده', '/live-analytics': 'تحلیل زنده دوربین‌ها',
   '/analytics': 'تحلیل ویدیوی ضبط‌شده', '/traffic-density': 'تردد و تراکم',
   '/queue-service': 'صف و خدمت‌رسانی', '/spatial': 'نقشه حرارتی و رفتار مکانی', '/events': 'رویدادها',
-  '/compare-locations': 'مقایسه مکان‌ها', '/reports': 'گزارش‌ها', '/locations': 'مکان‌ها',
-  '/system-health': 'سلامت سامانه', '/settings': 'تنظیمات', '/fields': 'مدیریت میادین',
+  '/compare-locations': 'مقایسه مکان‌ها', '/reports': 'گزارش‌ها', '/locations': 'مدیریت نواحی',
+  '/system-health': 'سلامت سامانه', '/settings': 'مدیریت دسترسی', '/fields': 'مدیریت میادین',
   '/markets': 'مدیریت بازارها', '/booths': 'مدیریت غرفه‌ها', '/cameras': 'مدیریت دوربین‌ها',
   '/regions': 'مدیریت نواحی', '/monitoring': 'مانیتورینگ زنده', '/users': 'مدیریت کاربران',
 }
