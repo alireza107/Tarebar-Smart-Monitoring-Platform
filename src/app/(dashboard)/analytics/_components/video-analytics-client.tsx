@@ -597,17 +597,6 @@ export function VideoAnalyticsClient({
               ))}
             </select>
             {selected && <p className="text-xs text-muted-foreground">{selected.description}</p>}
-            {(selectedApplication === 'configured_queue' || selectedApplication === 'full_analytics') && (
-              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs leading-6 text-blue-800">
-                <p className="font-semibold">صف افراد تشخیص‌داده‌شده چیست؟</p>
-                <p>
-                  این تحلیل افراد داخل محدوده صف ویدیو را دنبال می‌کند و با صف کارهای پردازشی
-                  بارگذاری‌ها متفاوت است. طول صف،
-                  زمان انتظار تقریبی، عبور از ظرفیت مجاز و میزان حرکت به‌سمت نقطه خدمت را گزارش می‌دهد.
-                  برای اجرا باید چندضلعی صف، ظرفیت و نقطه خدمت در YAML دوربین تعریف شده باشد.
-                </p>
-              </div>
-            )}
           </div>
 
           <div className="space-y-1.5">
@@ -618,9 +607,6 @@ export function VideoAnalyticsClient({
           <div className="space-y-1.5">
             <Label htmlFor="max_frames">حداکثر فریم برای تست سریع (اختیاری)</Label>
             <Input id="max_frames" name="max_frames" type="number" min={1} placeholder="مثال: 300" dir="ltr" />
-            {selectedApplication === 'detection' && (
-              <p className="text-xs text-amber-600">در حالت تشخیص ساده، محدودیت فریم اعمال نمی‌شود.</p>
-            )}
           </div>
 
           {selectedApplication === 'restricted_area' && (
@@ -670,7 +656,7 @@ export function VideoAnalyticsClient({
           </div>
           )}
 
-          {canEnableReid && selectedApplication !== 'detection' && (
+          {canEnableReid && (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 lg:col-span-2">
               <label htmlFor="enable_reid" className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-amber-900">
                 <input
