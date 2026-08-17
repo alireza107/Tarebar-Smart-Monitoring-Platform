@@ -1,20 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 import { PolygonEditor, type PolygonValue } from './polygon-editor'
-import { Pencil, Trash2, Video } from 'lucide-react'
+import { Loader2, Pencil, RefreshCw, Trash2, Video } from 'lucide-react'
 import type { RegionDetail, CameraRegionMapping } from '@/modules/region/types'
-import { derivePlaybackUrls } from '@/modules/camera/stream'
-import { useCameraSnapshot } from '@/modules/camera/use-camera-snapshot'
-import {
-  CameraStreamPlayer,
-  type PlayerState,
-} from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
 
 interface CameraOption {
   id: string
@@ -29,6 +23,12 @@ interface Props {
 
 type Editing = { mappingId?: string; cameraId: string; value: PolygonValue }
 
+type CameraFrame = {
+  dataUrl: string
+  updatedAt: string | null
+  aspectRatio: number | null
+}
+
 const EMPTY: PolygonValue = { mainPolygon: [], exclusionPolygons: [] }
 
 export function CameraMappingPanel({ region, canEdit }: Props) {
@@ -42,18 +42,6 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
     queryFn: () => fetch('/api/cameras').then(r => r.json()).then(j => j.data),
   })
 
-  // Render the same resilient WebRTC/HLS player used by live monitoring behind
-  // the SVG. This avoids cross-origin canvas capture failures in some browsers.
-  const editingCamera = editing ? cameras.find(c => c.id === editing.cameraId) : undefined
-  const editingPlaybackUrls = editing ? derivePlaybackUrls(editingCamera?.streamUrl) : null
-
-  // Live phone/RTMP feeds are flaky. Fall back to the last snapshot captured
-  // while the stream was healthy so the editor still has a reference image.
-  const [liveState, setLiveState] = useState<PlayerState>('connecting')
-  useEffect(() => {
-    setLiveState('connecting')
-  }, [editing?.cameraId])
-
   const { data: storedSnapshot } = useQuery({
     queryKey: ['camera-snapshot', editing?.cameraId],
     queryFn: () =>
@@ -63,22 +51,28 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
     enabled: !!editing,
   })
 
-  const { frame: capturedFrame } = useCameraSnapshot(editingPlaybackUrls?.hls)
-  const savedFrameRef = useRef<string | null>(null)
-  const saveSnapshotMutation = useMutation({
-    mutationFn: (dataUrl: string) => putJson(`/api/cameras/${editing!.cameraId}/snapshot`, { dataUrl }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['camera-snapshot', editing?.cameraId] }),
+  const liveFrameQuery = useQuery({
+    queryKey: ['camera-live-frame', editing?.cameraId],
+    queryFn: async () => {
+      const res = await fetch(`/api/cameras/${editing!.cameraId}/snapshot/capture`, { method: 'POST' })
+      if (!res.ok) throw new Error(await errMessage(res, 'دریافت تصویر از دوربین ممکن نشد'))
+      const json = await res.json()
+      const data = json.data as CameraFrame
+      qc.setQueryData(['camera-snapshot', editing!.cameraId], {
+        dataUrl: data.dataUrl,
+        updatedAt: data.updatedAt,
+      })
+      return data
+    },
+    enabled: !!editing,
+    staleTime: 60_000,
+    retry: 1,
   })
-  useEffect(() => {
-    if (!capturedFrame || !editing || !canEdit) return
-    if (savedFrameRef.current === capturedFrame) return
-    savedFrameRef.current = capturedFrame
-    saveSnapshotMutation.mutate(capturedFrame)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capturedFrame, editing?.cameraId, canEdit])
 
-  const showLive = !!editingPlaybackUrls && liveState !== 'error'
-  const snapshotUrl = storedSnapshot?.dataUrl ?? null
+  const frameUrl = liveFrameQuery.data?.dataUrl ?? storedSnapshot?.dataUrl ?? null
+  const aspectRatio = liveFrameQuery.data?.aspectRatio ?? undefined
+  const capturing = liveFrameQuery.isFetching
+  const captureFailed = liveFrameQuery.isError && !liveFrameQuery.data
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['region', region.id] })
@@ -138,39 +132,49 @@ export function CameraMappingPanel({ region, canEdit }: Props) {
       'دوربین'
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <Video className="size-4" /> ترسیم ناحیه برای: {cameraName}
           </h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => liveFrameQuery.refetch()}
+            disabled={capturing}
+          >
+            {capturing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            به‌روزرسانی تصویر
+          </Button>
         </div>
+        {capturing && !frameUrl && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> در حال دریافت تصویر دوربین…
+          </p>
+        )}
         <PolygonEditor
           value={editing.value}
           onChange={v => setEditing({ ...editing, value: v })}
-          backgroundContent={showLive ? (
-            <CameraStreamPlayer
-              key={editing.cameraId}
-              whepSrc={editingPlaybackUrls!.whep}
-              hlsSrc={editingPlaybackUrls!.hls}
-              chrome={false}
-              onStateChange={setLiveState}
-            />
-          ) : null}
-          backgroundUrl={!showLive ? snapshotUrl : undefined}
+          backgroundUrl={frameUrl}
+          aspectRatio={aspectRatio ?? 16 / 9}
         />
-        {!editingPlaybackUrls && (
-          <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-            آدرس پخش این دوربین معتبر نیست. آدرس RTSP دوربین را بررسی کنید.
+        {capturing && frameUrl && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> در حال به‌روزرسانی تصویر دوربین…
           </p>
         )}
-        {editingPlaybackUrls && !showLive && (
+        {captureFailed && frameUrl && (
           <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-            {snapshotUrl
-              ? `استریم زنده در دسترس نیست؛ آخرین تصویر ذخیره‌شده${
-                  storedSnapshot?.updatedAt
-                    ? ' (' + new Date(storedSnapshot.updatedAt).toLocaleString('fa-IR') + ')'
-                    : ''
-                } نمایش داده می‌شود.`
-              : 'استریم زنده در دسترس نیست و هنوز تصویری از این دوربین ذخیره نشده است. به‌محض آنلاین‌شدن دوربین، تصویر به‌طور خودکار ذخیره خواهد شد.'}
+            تصویر زنده دریافت نشد؛ آخرین تصویر ذخیره‌شده
+            {storedSnapshot?.updatedAt
+              ? ` (${new Date(storedSnapshot.updatedAt).toLocaleString('fa-IR')})`
+              : ''}
+            {' '}نمایش داده می‌شود.
+          </p>
+        )}
+        {captureFailed && !frameUrl && (
+          <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            دریافت تصویر از این دوربین ممکن نشد. دوربین را در بخش تحلیل زنده بررسی کنید یا دوباره تلاش کنید.
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -275,12 +279,6 @@ async function postJson(url: string, body: unknown) {
 async function patchJson(url: string, body: unknown) {
   const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(await errMessage(res, 'خطا در به‌روزرسانی نگاشت'))
-  return res.json()
-}
-
-async function putJson(url: string, body: unknown) {
-  const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await errMessage(res, 'خطا در ذخیره تصویر'))
   return res.json()
 }
 
