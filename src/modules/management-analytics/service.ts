@@ -61,9 +61,11 @@ export const managementAnalyticsService = {
     })
 
     try {
+      const analyticsKey = process.env.ANALYTICS_READ_KEY
       const response = await fetch(`${analyticsBase}/api/v1/management/overview?${query}`, {
         cache: 'no-store',
         signal: AbortSignal.timeout(5_000),
+        headers: analyticsKey ? { 'X-Analytics-Key': analyticsKey } : undefined,
       })
       if (!response.ok) return emptyOverview(filters)
       const body: unknown = await response.json()

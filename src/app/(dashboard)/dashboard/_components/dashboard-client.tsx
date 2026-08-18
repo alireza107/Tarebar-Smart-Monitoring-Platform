@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Activity, AlarmClock, ArrowLeft, BellRing, Footprints, Gauge, Hourglass, UsersRound } from 'lucide-react'
 import { GlobalFilterBar } from '@/components/management/global-filter-bar'
 import { AnalyticsCard, EmptyAnalytics, Panel } from '@/components/management/analytics-ui'
-import { fetchManagementOverview } from '@/modules/management-analytics/client'
+import { fetchFleetLive, fetchManagementOverview, type FleetLiveStatus } from '@/modules/management-analytics/client'
 import type { ActivityCell, ManagementFilters, ManagementOverview, TrendPoint } from '@/modules/management-analytics/types'
 import { useManagementFilters } from '@/stores/management-filters'
 
@@ -35,7 +35,12 @@ export function DashboardClient() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['management-overview', filters],
     queryFn: () => fetchManagementOverview(filters),
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
+  })
+  const live = useQuery({
+    queryKey: ['fleet-live'],
+    queryFn: fetchFleetLive,
+    refetchInterval: 4_000,
   })
 
   return (
@@ -52,6 +57,8 @@ export function DashboardClient() {
       </div>
 
       <GlobalFilterBar />
+
+      <LiveCameraStrip status={live.data} />
 
       {isError ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-center text-sm text-destructive">دریافت نمای کلی با خطا روبه‌رو شد.</div>
@@ -101,6 +108,36 @@ function OverviewContent({ data }: { data: ManagementOverview }) {
         {data.importantChanges.length === 0 ? <EmptyAnalytics label="تغییر معناداری برای امروز شناسایی نشده است." /> : <ul className="grid gap-2 md:grid-cols-2">{data.importantChanges.map((change) => <li key={change} className="rounded-lg border bg-muted/20 px-3 py-2 text-xs leading-6">{change}</li>)}</ul>}
       </Panel>
     </>
+  )
+}
+
+function LiveCameraStrip({ status }: { status: FleetLiveStatus | undefined }) {
+  if (!status?.enabled) {
+    return <Panel title="پردازش زنده دوربین‌ها"><EmptyAnalytics label="نمونه‌بردار پس‌زمینه هنوز فعال نشده است." /></Panel>
+  }
+  if (status.workers.length === 0) {
+    return <Panel title="پردازش زنده دوربین‌ها"><EmptyAnalytics label="دوربین متصل با آدرس RTSP یافت نشد." /></Panel>
+  }
+  return (
+    <Panel title="پردازش زنده دوربین‌ها" description="هر ۲ ثانیه یک فریم؛ اعداد حضور فعلی بدون انتظار برای رول‌آپ ساعتی">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {status.workers.map((worker) => (
+          <div key={worker.cameraId} className="rounded-lg border bg-muted/20 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-xs font-medium">{worker.name}</p>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] ${worker.status === 'running' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                {worker.status === 'running' ? 'در حال پردازش' : worker.status === 'reconnect' ? 'قطع استریم' : worker.status}
+              </span>
+            </div>
+            <p className="mt-2 text-lg font-semibold">{worker.currentPeople == null ? '—' : `${worker.currentPeople.toLocaleString('fa-IR')} نفر`}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {worker.queueLength == null ? 'بدون صف پیکربندی‌شده' : `صف ${worker.queueLength.toLocaleString('fa-IR')} نفر`}
+              {worker.lastError ? ` · ${worker.lastError}` : ''}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Panel>
   )
 }
 

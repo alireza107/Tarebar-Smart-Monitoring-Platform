@@ -36,3 +36,29 @@ async function fetchModule<T>(module: 'people-flow' | 'queues' | 'spatial', filt
 export const fetchPeopleFlow = (filters: ManagementFilters, bucket: TimeBucket) => fetchModule<PeopleFlowAnalytics>('people-flow', filters, bucket)
 export const fetchQueueAnalytics = (filters: ManagementFilters, bucket: TimeBucket) => fetchModule<QueueAnalytics>('queues', filters, bucket)
 export const fetchSpatialAnalytics = (filters: ManagementFilters, bucket: TimeBucket) => fetchModule<SpatialAnalytics>('spatial', filters, bucket)
+
+export type FleetLiveStatus = {
+  enabled: boolean
+  fps: number
+  cameras: number
+  running: number
+  lastError?: string | null
+  workers: Array<{
+    cameraId: string
+    name: string
+    marketId: string | null
+    fieldId: string | null
+    status: string
+    processedFrames: number
+    currentPeople?: number | null
+    queueLength?: number | null
+    lastError?: string | null
+  }>
+}
+
+export async function fetchFleetLive(): Promise<FleetLiveStatus> {
+  const response = await fetch('/api/management/live')
+  if (!response.ok) throw new Error('خطا در دریافت وضعیت زنده')
+  const body = await response.json() as { data: FleetLiveStatus }
+  return body.data
+}

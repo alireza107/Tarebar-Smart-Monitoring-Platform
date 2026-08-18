@@ -24,7 +24,7 @@ export function SpatialAnalyticsClient() {
   const [selection, setSelection] = useState<DrilldownSelection | null>(null)
   const state = useManagementFilters()
   const filters = useMemo<ManagementFilters>(() => ({ locationType: state.locationType, locationId: state.locationId, placeType: state.placeType, from: state.from, to: state.to, comparison: state.comparison, timeFrom: state.timeFrom, timeTo: state.timeTo }), [state.locationType, state.locationId, state.placeType, state.from, state.to, state.comparison, state.timeFrom, state.timeTo])
-  const query = useQuery({ queryKey: ['spatial-analytics', filters, bucket], queryFn: () => fetchSpatialAnalytics(filters, bucket), refetchInterval: 5 * 60_000 })
+  const query = useQuery({ queryKey: ['spatial-analytics', filters, bucket], queryFn: () => fetchSpatialAnalytics(filters, bucket), refetchInterval: 15_000 })
   const dataLayer = query.data?.layers.find((item) => item.layer === layer)
   usePlayer(playing, dataLayer, frame, setFrame, setPlaying)
   return <div className="space-y-5"><ModuleHeader title="نقشه حرارتی و رفتار مکانی" description="تحلیل تجمیعی اشغال، ماندگاری، حرکت و ازدحام در مختصات مکان" bucket={bucket} onBucketChange={(value) => { setBucket(value); setFrame(null) }} /><GlobalFilterBar />{query.isLoading ? <Loading /> : query.isError || !query.data ? <EmptyAnalytics label="دریافت داده مکانی با خطا روبه‌رو شد." /> : <Content data={query.data} layer={layer} onLayer={setLayer} view={view} onView={setView} frame={frame} onFrame={setFrame} playing={playing} onPlaying={setPlaying} onSelect={setSelection} />}{query.data && <MetricDrilldown selection={selection} onOpenChange={(open) => { if (!open) setSelection(null) }} filters={filters} events={query.data.events} />}</div>

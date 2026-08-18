@@ -32,7 +32,7 @@ export function QueueAnalyticsClient() {
   const [queue, setQueue] = useState<QueueDetail | null>(null)
   const state = useManagementFilters()
   const filters = useMemo<ManagementFilters>(() => ({ locationType: state.locationType, locationId: state.locationId, placeType: state.placeType, from: state.from, to: state.to, comparison: state.comparison, timeFrom: state.timeFrom, timeTo: state.timeTo }), [state.locationType, state.locationId, state.placeType, state.from, state.to, state.comparison, state.timeFrom, state.timeTo])
-  const query = useQuery({ queryKey: ['queue-analytics', filters, bucket], queryFn: () => fetchQueueAnalytics(filters, bucket), refetchInterval: 60_000 })
+  const query = useQuery({ queryKey: ['queue-analytics', filters, bucket], queryFn: () => fetchQueueAnalytics(filters, bucket), refetchInterval: 10_000 })
   return <div className="space-y-5"><ModuleHeader title="صف و خدمت‌رسانی" description="زمان انتظار، ظرفیت خدمت و پایبندی به SLA در صف‌های مکان" bucket={bucket} onBucketChange={setBucket} /><GlobalFilterBar />{query.isLoading ? <Loading /> : query.isError || !query.data ? <EmptyAnalytics label="دریافت داده صف با خطا روبه‌رو شد." /> : <Content data={query.data} onSelect={setSelection} selectedQueue={queue} onQueueSelect={setQueue} />}{query.data && <MetricDrilldown selection={selection} onOpenChange={(open) => { if (!open) setSelection(null) }} filters={filters} events={query.data.events} />}</div>
 }
 
