@@ -16,11 +16,18 @@ camera-minute facts.
 ## Implemented data path
 
 ```text
-RTSP camera → detector/tracker → camera-local minute accumulator
+Connected cameras (0.5 FPS fleet) → detector/tracker → camera-local minute accumulator
             → atomic disk outbox → authenticated batch ingest API
             → PostgreSQL compact facts → advisory-locked incremental rollup
             → field/market/booth hour read models → Next.js scoped API → dashboard
+
+On-demand live/video jobs remain a separate path and still write annotated previews.
 ```
+
+The fleet sampler (`VIDEO_ANALYTICS_FLEET_ENABLED`) keeps one worker per connected camera,
+grabs **one frame every two seconds**, and never writes dashboard job videos. Queue, crowd,
+and heatmap facts are rolled up by the camera's field/market/booth. On-demand Live Analytics
+and recorded Video Analytics are unchanged.
 
 Properties:
 
