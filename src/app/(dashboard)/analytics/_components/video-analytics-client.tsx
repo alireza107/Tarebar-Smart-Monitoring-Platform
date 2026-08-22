@@ -983,6 +983,7 @@ function appendHistory(previous: Record<string, number[]>, metrics: Record<strin
 const IMPORTANT_LIVE_METRICS: Record<LiveTaskId, MetricDefinition[]> = {
   people_counting: [
     { key: 'current_people', label: 'افراد حاضر', value_type: 'integer', unit: 'نفر', aggregation: 'current', display: 'counter', availability: 'both' },
+    { key: 'total_unique_people', label: 'افراد یکتا', value_type: 'integer', unit: 'نفر', aggregation: 'total', display: 'counter', availability: 'both' },
   ],
   heatmap: [
     { key: 'top_crowded_regions', label: 'پرتراکم‌ترین بخش‌ها', value_type: 'table', unit: null, aggregation: 'current', display: 'table', availability: 'both' },
