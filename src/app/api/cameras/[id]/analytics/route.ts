@@ -23,6 +23,7 @@ const requestSchema = z.object({
     .optional(),
   maxFrames: z.number().int().positive().optional(),
   enableReid: z.boolean().default(false),
+  trackerType: z.string().min(1).max(40).default('bytetrack'),
 })
 
 type Params = { params: Promise<{ id: string }> }
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         camera_id: camera.id,
         max_frames: parsed.data.maxFrames,
         enable_reid: parsed.data.enableReid,
+        tracker_type: parsed.data.trackerType,
         camera_config_yaml: cameraConfigYaml,
       }),
       signal: AbortSignal.timeout(10_000),

@@ -86,6 +86,7 @@ type AnalyticsJob = {
   updated_at: string
   max_frames: number | null
   enable_reid: boolean
+  tracker_type: string
   error: string | null
   summary: Record<string, unknown> | null
   artifacts: Record<string, Artifact>
@@ -94,6 +95,18 @@ type AnalyticsJob = {
   enabled_tasks: string[]
   source_type: 'file' | 'rtsp'
 }
+
+type TrackerOption = {
+  type: string
+  label: string
+  description: string
+  requires_reid: boolean
+}
+
+const FALLBACK_TRACKERS: TrackerOption[] = [
+  { type: 'bytetrack', label: 'ByteTrack', description: 'Baseline motion tracker.', requires_reid: false },
+  { type: 'stabletrack', label: 'StableTrack', description: 'Low-frequency association for 0.5 FPS processing.', requires_reid: false },
+]
 
 const LIVE_TASKS = [
   {
@@ -284,6 +297,7 @@ export function VideoAnalyticsClient({
     'people_counting',
     'heatmap',
   ])
+  const [selectedTracker, setSelectedTracker] = useState('bytetrack')
 
   useEffect(() => {
     let active = true
@@ -313,6 +327,11 @@ export function VideoAnalyticsClient({
     queryFn: () => apiJson('/api/v1/applications'),
     retry: 1,
   })
+  const trackersQuery = useQuery<{ data: TrackerOption[] }>({
+    queryKey: ['video-analytics-trackers'],
+    queryFn: () => apiJson('/api/v1/trackers'),
+    retry: 1,
+  })
   const camerasQuery = useQuery<{ data: CameraType[] }>({
     queryKey: ['video-analytics-cameras'],
     queryFn: async () => {
@@ -336,6 +355,8 @@ export function VideoAnalyticsClient({
     () => applicationsQuery.data?.data.find(item => item.id === selectedApplication),
     [applicationsQuery.data, selectedApplication],
   )
+  const trackerOptions = trackersQuery.data?.data?.length ? trackersQuery.data.data : FALLBACK_TRACKERS
+  const selectedTrackerOption = trackerOptions.find(item => item.type === selectedTracker) ?? trackerOptions[0]
 
   const liveCameras = useMemo(
     () => (camerasQuery.data?.data ?? []).filter(camera => Boolean(camera.streamUrl)),
@@ -400,6 +421,7 @@ export function VideoAnalyticsClient({
         body: JSON.stringify({
           applicationIds: selectedLiveApplications,
           maxFrames: 1_800,
+          trackerType: selectedTracker,
         }),
       })
       const body = await response.json().catch(() => null)
@@ -419,6 +441,7 @@ export function VideoAnalyticsClient({
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     data.set('application_id', selectedApplication)
+    data.set('tracker_type', selectedTracker)
     if (!data.get('max_frames')) data.delete('max_frames')
     setConfigurationError(null)
 
@@ -502,6 +525,23 @@ export function VideoAnalyticsClient({
             </select>
             {liveCameras.length === 0 && !camerasQuery.isLoading && (
               <p className="text-xs text-amber-600">هیچ دوربینی با آدرس استریم ثبت نشده است.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="live_tracker">ردیاب افراد (موقت)</Label>
+            <select
+              id="live_tracker"
+              value={selectedTracker}
+              onChange={event => setSelectedTracker(event.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {trackerOptions.map(tracker => (
+                <option key={tracker.type} value={tracker.type}>{tracker.label}</option>
+              ))}
+            </select>
+            {selectedTrackerOption && (
+              <p className="text-xs text-muted-foreground">{selectedTrackerOption.description}</p>
             )}
           </div>
 
@@ -619,6 +659,24 @@ export function VideoAnalyticsClient({
               ))}
             </select>
             {selected && <p className="text-xs text-muted-foreground">{selected.description}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tracker_type">ردیاب افراد (موقت)</Label>
+            <select
+              id="tracker_type"
+              name="tracker_type"
+              value={selectedTracker}
+              onChange={event => setSelectedTracker(event.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {trackerOptions.map(tracker => (
+                <option key={tracker.type} value={tracker.type}>{tracker.label}</option>
+              ))}
+            </select>
+            {selectedTrackerOption && (
+              <p className="text-xs text-muted-foreground">{selectedTrackerOption.description}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -777,6 +835,7 @@ function JobCard({
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {applicationLabel} · {job.camera_id}
+              {` · ردیاب ${job.live?.metrics?.active_tracker ?? job.tracker_type ?? 'bytetrack'}`}
               {job.enable_reid ? ' · OSNet ReID فعال' : ''}
             </p>
           </div>
