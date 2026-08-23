@@ -107,6 +107,7 @@ const FALLBACK_TRACKERS: TrackerOption[] = [
   { type: 'bytetrack', label: 'ByteTrack', description: 'Baseline motion tracker.', requires_reid: false },
   { type: 'stabletrack', label: 'StableTrack', description: 'Low-frequency association for 0.5 FPS processing.', requires_reid: false },
   { type: 'deepocsort', label: 'Deep OC-SORT', description: 'Observation-centric motion plus adaptive appearance association.', requires_reid: false },
+  { type: 'botsort', label: 'BoT-SORT', description: 'ByteTrack associations plus camera-motion compensation and optional ReID fusion.', requires_reid: false },
 ]
 
 const LIVE_TASKS = [

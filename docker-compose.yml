@@ -77,6 +77,8 @@ services:
       VIDEO_ANALYTICS_FLEET_ENABLED: ${VIDEO_ANALYTICS_FLEET_ENABLED:-true}
       VIDEO_ANALYTICS_FLEET_FPS: "0.5"
       VIDEO_ANALYTICS_FLEET_MAX_CAMERAS: ${VIDEO_ANALYTICS_FLEET_MAX_CAMERAS:-32}
+      # Fleet/general dashboard tracker. Allowed: bytetrack, stabletrack, deepocsort, botsort.
+      VIDEO_ANALYTICS_TRACKER: ${VIDEO_ANALYTICS_TRACKER:-stabletrack}
       MEDIAMTX_RTSP_URL: rtsp://mediamtx:8554
       DATABASE_URL: postgresql://postgres:postgres@db:5432/tarebar
       ANALYTICS_DATABASE_URL: postgresql://postgres:postgres@db:5432/tarebar
