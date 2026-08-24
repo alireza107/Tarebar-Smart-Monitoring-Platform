@@ -23,7 +23,7 @@ const META: Record<SectionKind, { title: string; description: string }> = {
 export function AnalyticsSectionClient({ kind }: { kind: SectionKind }) {
   const state = useManagementFilters()
   const filters = useMemo<ManagementFilters>(() => ({ locationType: state.locationType, locationId: state.locationId, placeType: state.placeType, from: state.from, to: state.to, comparison: state.comparison, timeFrom: state.timeFrom, timeTo: state.timeTo }), [state.locationType, state.locationId, state.placeType, state.from, state.to, state.comparison, state.timeFrom, state.timeTo])
-  const query = useQuery({ queryKey: ['management-overview', filters], queryFn: () => fetchManagementOverview(filters), refetchInterval: 60_000 })
+  const query = useQuery({ queryKey: ['management-overview', filters], queryFn: () => fetchManagementOverview(filters), refetchInterval: 10_000 })
   const meta = META[kind]
   return <div className="space-y-5"><div><h2 className="text-lg font-semibold">{meta.title}</h2><p className="mt-0.5 text-xs text-muted-foreground">{meta.description}</p></div><GlobalFilterBar />{query.isLoading ? <div className="h-80 animate-pulse rounded-xl bg-muted" /> : query.isError || !query.data ? <EmptyAnalytics label="دریافت داده با خطا روبه‌رو شد." /> : <SectionContent kind={kind} data={query.data} />}</div>
 }

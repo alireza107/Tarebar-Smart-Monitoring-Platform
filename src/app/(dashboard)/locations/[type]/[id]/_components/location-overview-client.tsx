@@ -23,7 +23,7 @@ export function LocationOverviewClient({ type, id }: { type: ManagementLocationT
   const state = useManagementFilters()
   const locations = useQuery({ queryKey: ['management-locations'], queryFn: fetchManagementLocations, staleTime: 5 * 60_000 })
   const filters = useMemo<ManagementFilters>(() => ({ locationType: type, locationId: id, placeType: state.placeType, from: state.from, to: state.to, comparison: state.comparison, timeFrom: state.timeFrom, timeTo: state.timeTo }), [type, id, state.placeType, state.from, state.to, state.comparison, state.timeFrom, state.timeTo])
-  const overview = useQuery({ queryKey: ['management-overview', filters], queryFn: () => fetchManagementOverview(filters), refetchInterval: 60_000 })
+  const overview = useQuery({ queryKey: ['management-overview', filters], queryFn: () => fetchManagementOverview(filters), refetchInterval: 5_000 })
   const all = locations.data ? [...locations.data.fields, ...locations.data.markets, ...locations.data.booths] : []
   const location = all.find((item) => item.type === type && item.id === id)
   return <div className="space-y-5">

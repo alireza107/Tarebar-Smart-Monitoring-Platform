@@ -16,9 +16,9 @@ const KPI = [
   { key: 'averageLength', title: 'میانگین طول صف', icon: ListOrdered },
   { key: 'maximumLength', title: 'بیشترین طول صف', icon: Waves },
   { key: 'averageWaitMinutes', title: 'میانگین انتظار', icon: AlarmClock, suffix: ' دقیقه' },
-  { key: 'p50WaitMinutes', title: 'انتظار P50', icon: Timer, suffix: ' دقیقه' },
-  { key: 'p90WaitMinutes', title: 'انتظار P90', icon: Timer, suffix: ' دقیقه' },
-  { key: 'p95WaitMinutes', title: 'انتظار P95', icon: Timer, suffix: ' دقیقه' },
+  { key: 'p50WaitMinutes', title: 'زمان انتظار نیمی از افراد', icon: Timer, suffix: ' دقیقه' },
+  { key: 'p90WaitMinutes', title: 'زمان انتظار ۹۰٪ افراد', icon: Timer, suffix: ' دقیقه' },
+  { key: 'p95WaitMinutes', title: 'زمان انتظار ۹۵٪ افراد', icon: Timer, suffix: ' دقیقه' },
   { key: 'movementSpeedMetersPerMinute', title: 'سرعت حرکت صف', icon: MoveHorizontal, suffix: ' متر/دقیقه' },
   { key: 'throughputPerHour', title: 'نرخ خدمت', icon: Gauge, suffix: ' نفر/ساعت' },
   { key: 'slaPercent', title: 'تحقق SLA', icon: Percent, suffix: '٪' },
@@ -32,7 +32,7 @@ export function QueueAnalyticsClient() {
   const [queue, setQueue] = useState<QueueDetail | null>(null)
   const state = useManagementFilters()
   const filters = useMemo<ManagementFilters>(() => ({ locationType: state.locationType, locationId: state.locationId, placeType: state.placeType, from: state.from, to: state.to, comparison: state.comparison, timeFrom: state.timeFrom, timeTo: state.timeTo }), [state.locationType, state.locationId, state.placeType, state.from, state.to, state.comparison, state.timeFrom, state.timeTo])
-  const query = useQuery({ queryKey: ['queue-analytics', filters, bucket], queryFn: () => fetchQueueAnalytics(filters, bucket), refetchInterval: 60_000 })
+  const query = useQuery({ queryKey: ['queue-analytics', filters, bucket], queryFn: () => fetchQueueAnalytics(filters, bucket), refetchInterval: 10_000 })
   return <div className="space-y-5"><ModuleHeader title="صف و خدمت‌رسانی" description="زمان انتظار، ظرفیت خدمت و پایبندی به SLA در صف‌های مکان" bucket={bucket} onBucketChange={setBucket} /><GlobalFilterBar />{query.isLoading ? <Loading /> : query.isError || !query.data ? <EmptyAnalytics label="دریافت داده صف با خطا روبه‌رو شد." /> : <Content data={query.data} onSelect={setSelection} selectedQueue={queue} onQueueSelect={setQueue} />}{query.data && <MetricDrilldown selection={selection} onOpenChange={(open) => { if (!open) setSelection(null) }} filters={filters} events={query.data.events} />}</div>
 }
 
@@ -50,7 +50,7 @@ function Content({ data, onSelect, selectedQueue, onQueueSelect }: { data: Queue
 
 function LocationComparison({ data }: { data: QueueAnalytics }) {
   if (!data.locations.length) return <EmptyAnalytics />
-  return <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-xs"><thead><tr className="border-b text-muted-foreground"><th className="p-2 text-right">مکان</th><th>صف فعلی</th><th>انتظار متوسط</th><th>P95</th><th>نرخ خدمت</th><th>SLA</th><th>هشدار</th><th>بحرانی</th><th /></tr></thead><tbody className="divide-y">{data.locations.map((row) => <tr key={row.locationId}><td className="p-2.5 font-medium">{row.name}</td><td className="text-center">{row.currentLength?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.averageWaitMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.p95WaitMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.throughput?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.slaPercent === null ? '—' : `${row.slaPercent.toLocaleString('fa-IR')}٪`}</td><td className="text-center text-amber-600">{row.warningMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center text-red-500">{row.criticalMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td><Link href={`/locations/${row.locationType}/${row.locationId}`} className="text-primary">مکان</Link></td></tr>)}</tbody></table></div>
+  return <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-xs"><thead><tr className="border-b text-muted-foreground"><th className="p-2 text-right">مکان</th><th>صف فعلی</th><th>انتظار متوسط</th><th>زمان انتظار ۹۵٪ افراد</th><th>نرخ خدمت</th><th>SLA</th><th>هشدار</th><th>بحرانی</th><th /></tr></thead><tbody className="divide-y">{data.locations.map((row) => <tr key={row.locationId}><td className="p-2.5 font-medium">{row.name}</td><td className="text-center">{row.currentLength?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.averageWaitMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.p95WaitMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.throughput?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center">{row.slaPercent === null ? '—' : `${row.slaPercent.toLocaleString('fa-IR')}٪`}</td><td className="text-center text-amber-600">{row.warningMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td className="text-center text-red-500">{row.criticalMinutes?.toLocaleString('fa-IR') ?? '—'}</td><td><Link href={`/locations/${row.locationType}/${row.locationId}`} className="text-primary">مکان</Link></td></tr>)}</tbody></table></div>
 }
 
 function QueueList({ data, selected, onSelect }: { data: QueueAnalytics; selected: QueueDetail | null; onSelect: (value: QueueDetail | null) => void }) {
@@ -59,7 +59,7 @@ function QueueList({ data, selected, onSelect }: { data: QueueAnalytics; selecte
 }
 
 function QueueDetailPanel({ queue }: { queue: QueueDetail }) {
-  const items = [['طول فعلی', queue.currentLength, ' نفر'], ['میانگین طول', queue.averageLength, ' نفر'], ['بیشترین طول', queue.maximumLength, ' نفر'], ['انتظار متوسط', queue.averageWaitMinutes, ' دقیقه'], ['P50 / P90 / P95', queue.p50WaitMinutes === null ? null : `${queue.p50WaitMinutes} / ${queue.p90WaitMinutes ?? '—'} / ${queue.p95WaitMinutes ?? '—'}`, ' دقیقه'], ['سرعت حرکت', queue.movementSpeedMetersPerMinute, ' متر/دقیقه'], ['نرخ خدمت', queue.throughputPerHour, ' نفر/ساعت'], ['تحقق SLA', queue.slaPercent, '٪']] as const
+  const items = [['طول فعلی', queue.currentLength, ' نفر'], ['میانگین طول', queue.averageLength, ' نفر'], ['بیشترین طول', queue.maximumLength, ' نفر'], ['انتظار متوسط', queue.averageWaitMinutes, ' دقیقه'], ['زمان انتظار نیمی از افراد', queue.p50WaitMinutes, ' دقیقه'], ['زمان انتظار ۹۰٪ افراد', queue.p90WaitMinutes, ' دقیقه'], ['زمان انتظار ۹۵٪ افراد', queue.p95WaitMinutes, ' دقیقه'], ['سرعت حرکت', queue.movementSpeedMetersPerMinute, ' متر/دقیقه'], ['نرخ خدمت', queue.throughputPerHour, ' نفر/ساعت'], ['تحقق SLA', queue.slaPercent, '٪']] as const
   return <div className="rounded-xl border bg-muted/15 p-4"><div className="mb-4 flex items-start justify-between"><div><h4 className="text-sm font-semibold">{queue.name}</h4><p className="mt-1 text-[11px] text-muted-foreground">{queue.locationName}</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${queue.isPhysicallyCalibrated ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{queue.isPhysicallyCalibrated ? 'کالیبره' : 'بدون کالیبراسیون فیزیکی'}</span></div><div className="grid gap-2 sm:grid-cols-2">{items.map(([label, value, suffix]) => <div key={label} className="rounded-lg border bg-card p-2.5"><p className="text-[10px] text-muted-foreground">{label}</p><p className="mt-1 text-sm font-semibold">{value === null ? '—' : `${typeof value === 'number' ? value.toLocaleString('fa-IR') : value}${suffix}`}</p></div>)}</div></div>
 }
 
