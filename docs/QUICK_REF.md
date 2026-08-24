@@ -20,12 +20,13 @@ Sprint Roadmap:
 
 ## Local Development Setup
 
-### Docker (PostgreSQL)
+### Docker (full local stack)
 ```bash
-docker compose up -d      # start DB
-docker compose down       # stop DB
+docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
+docker compose -f docker-compose.dev.yml --env-file .env.dev down
 ```
-`docker-compose.yml` runs `postgres:16-alpine` on port **5432**.
+`docker-compose.dev.yml` builds the app and video-analytics from source and
+runs `postgres:16-alpine` on port **5432** plus MediaMTX.
 
 Credentials: `postgres / postgres` — DB name: `tarebar`
 
@@ -47,7 +48,9 @@ Default admin: **username:** `admin` · **password:** `Admin@1234`
 - **51 tests pass** across 4 test files
 - **Dockerfile** — multi-stage production image (deps → builder → runner); non-root user; Next.js standalone output
 - **`next.config.ts`** — `output: 'standalone'` added for Docker
-- **`docker-compose.yml`** — updated with `app` service (build, env wiring, depends_on with healthcheck) alongside existing `db` service
+- **`Dockerfile.dev`** — development image with source bind-mounts and Next.js hot reload
+- **`docker-compose.dev.yml`** — local source builds for app, video-analytics, postgres, and MediaMTX
+- **`docker-compose.yml`** — includes the development compose file so `docker compose up` still works
 - **`.env.example`** — template with all required environment variables and generation hints
 - **`README.md`** — full project documentation: prerequisites, local setup, scripts, Docker deployment, architecture, RBAC table, API route table, testing summary
 
