@@ -299,7 +299,7 @@ export function VideoAnalyticsClient({
     'people_counting',
     'heatmap',
   ])
-  const [selectedTracker, setSelectedTracker] = useState('bytetrack')
+  const [selectedTracker, setSelectedTracker] = useState('botsort')
 
   useEffect(() => {
     let active = true
@@ -837,7 +837,7 @@ function JobCard({
             <p className="truncate text-sm font-semibold" dir="ltr">{job.original_filename}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {applicationLabel} · {job.camera_id}
-              {` · ردیاب ${job.live?.metrics?.active_tracker ?? job.tracker_type ?? 'bytetrack'}`}
+              {` · ردیاب ${job.live?.metrics?.active_tracker ?? job.tracker_type ?? 'botsort'}`}
               {job.enable_reid ? ' · OSNet ReID فعال' : ''}
             </p>
           </div>
