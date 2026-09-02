@@ -23,55 +23,69 @@
 
 ## Prerequisites
 
-- Node.js 20+
-- Docker (for the database)
+- Node.js 20+ (only for host-side `npm run dev`)
+- Docker with Compose v2
+- A sibling clone of the video analytics repository (`../video_analytics` by default)
 
 ---
 
 ## Local Development
 
-### 1. Clone and install dependencies
+Two workflows are supported. Full-stack Docker is the default for working on
+the complete system. Host-side Next.js remains available for UI-only work.
 
-```bash
-git clone <repo-url>
-cd tarebar
-npm install
-```
+### Full stack with Docker (recommended)
 
-### 2. Configure environment variables
+1. Clone the application repositories as siblings:
 
-```bash
-cp .env.example .env.local
-# Edit .env.local — set AUTH_SECRET to a strong random value:
-# openssl rand -base64 32
-```
+   ```bash
+   git clone <frontend-repo-url> Tarebar-Smart-Monitoring-Platform
+   git clone <video-analytics-repo-url> video_analytics
+   cd Tarebar-Smart-Monitoring-Platform
+   ```
 
-### 3. Start the database
+2. Review `.env.dev` (localhost URLs and development credentials). Copy
+   `.env.example` if you need a fresh catalog. For LAN / phone access, set
+   `NEXT_PUBLIC_MEDIAMTX_*` and `MEDIAMTX_WEBRTC_HOST` to the Docker host IP.
 
-```bash
-docker compose up -d db
-```
+3. Start every service from source (no GHCR access required):
 
-### 4. Run migrations and seed
+   ```bash
+   docker compose -f docker-compose.dev.yml up
+   ```
 
-```bash
-npx prisma migrate dev
-npx prisma db seed
-```
+   First run (or after dependency changes) add `--build`. `docker compose up`
+   still works; `docker-compose.yml` includes the development file.
+
+4. First time only, seed the admin user:
+
+   ```bash
+   docker compose -f docker-compose.dev.yml --env-file .env.dev exec app npx prisma db seed
+   ```
+
+Open [http://localhost:3000](http://localhost:3000). Source is bind-mounted:
+frontend uses Next.js hot reload; video-analytics runs uvicorn `--reload`.
 
 Default admin account: **username** `admin` · **password** `Admin@1234`
 
-### 5. Start the dev server
+See [Live-Cameras-MediaMTX.md](docs/Live-Cameras-MediaMTX.md) for Larix,
+WebRTC, RTSP/IP-camera, firewall, and live-CV setup.
+
+### Host-side Next.js (database in Docker)
 
 ```bash
+git clone <repo-url>
+cd Tarebar-Smart-Monitoring-Platform
+npm install
+cp .env.example .env.local
+# Edit .env.local — set AUTH_SECRET to a strong random value:
+# openssl rand -base64 32
+
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d db
+npx prisma migrate dev
+npx prisma db seed
 npm run dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-The compose stack also runs MediaMTX and the sibling FastAPI video analytics
-service. See [Live-Cameras-MediaMTX.md](docs/Live-Cameras-MediaMTX.md) for Larix,
-WebRTC, RTSP/IP-camera, firewall, and live-CV setup.
 
 ---
 
@@ -92,31 +106,36 @@ WebRTC, RTSP/IP-camera, firewall, and live-CV setup.
 
 ---
 
-## Production — Docker Compose
+## Production — GHCR images
 
-The included `docker-compose.yml` runs Next.js, PostgreSQL, MediaMTX, and the
-video analytics API in containers.
+Production does **not** build from this repository. GitHub Actions
+(`.github/workflows/build-image.yml`) pushes `ghcr.io/<owner>/frontend:<sha>`
+and `ghcr.io/<owner>/frontend:<tag>` (for example `v1.0.0`). The sibling
+video-analytics repository publishes `ghcr.io/<owner>/video-analytics:<version>`.
+
+Servers clone the **deployment** repository only and pull those images:
 
 ```bash
-# Build and start all services
-docker compose up -d --build
-
-# Apply migrations inside the app container (first deploy only)
-docker compose exec app npx prisma migrate deploy
-
-# View logs
-docker compose logs -f app
+cd tarebar-deployment
+docker compose pull
+docker compose up -d
 ```
 
-Required environment variables (set in your shell or a `.env` file at the project root):
+See that repository's README for `.env.production`, GHCR login, and migrations.
+Do not use `build:` or application source mounts on the server.
+
+Set these GitHub Actions **repository variables** before tagging a production
+frontend release (`NEXT_PUBLIC_*` values are baked in at image build time):
 
 | Variable | Description |
 |---|---|
-| `AUTH_SECRET` | Random secret for Auth.js JWT signing |
-| `AUTH_URL` | Public base URL of the app (e.g. `https://tarebar.example.com`) |
-| `NEXT_PUBLIC_APP_URL` | Same as `AUTH_URL` — used client-side |
+| `NEXT_PUBLIC_APP_URL` | Public base URL of the app |
+| `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL` | Public video-analytics API URL |
+| `NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL` | Public MediaMTX WebRTC URL |
+| `NEXT_PUBLIC_MEDIAMTX_HLS_URL` | Public MediaMTX HLS URL |
 
-`DATABASE_URL` is wired automatically from the `db` service inside compose.
+Local Docker Compose still uses `.env.dev` and source builds. Required local
+variables are documented in `.env.example`.
 
 ---
 

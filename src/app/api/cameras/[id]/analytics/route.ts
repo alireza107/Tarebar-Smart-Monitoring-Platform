@@ -23,7 +23,7 @@ const requestSchema = z.object({
     .optional(),
   maxFrames: z.number().int().positive().optional(),
   enableReid: z.boolean().default(false),
-  trackerType: z.string().min(1).max(40).default('bytetrack'),
+  trackerType: z.string().min(1).max(40).default('botsort'),
 })
 
 type Params = { params: Promise<{ id: string }> }
