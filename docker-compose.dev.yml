@@ -157,8 +157,11 @@ services:
       FRUIT_PIPELINE_JOB_WORKERS: ${FRUIT_PIPELINE_JOB_WORKERS:-1}
       FRUIT_PIPELINE_MAX_UPLOAD_BYTES: ${FRUIT_PIPELINE_MAX_UPLOAD_BYTES:-1073741824}
       FRUIT_PIPELINE_DEVICE: ${FRUIT_PIPELINE_DEVICE:-cpu}
+      FRUIT_PIPELINE_DETECTOR_WEIGHTS: /models/yolo11x.pt
+      FRUIT_PIPELINE_SAM_CHECKPOINT: /models/sam_vit_l_0b3195.pth
     volumes:
       - fruit-pipeline-data:/app/output/dashboard
+      - ${FRUIT_PIPELINE_MODELS_DIR:-../fruit-pipeline/models}:/models:ro
 
 volumes:
   pgdata:
