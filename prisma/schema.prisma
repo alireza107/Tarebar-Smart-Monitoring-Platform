@@ -190,7 +190,32 @@ model Camera {
   market Market? @relation(fields: [marketId], references: [id])
   booth  Booth?  @relation(fields: [boothId], references: [id])
 
-  regions CameraRegion[]
+  regions      CameraRegion[]
+  calibrations CameraCalibration[]
+}
+
+model CameraCalibration {
+  id                   String   @id @default(cuid())
+  cameraId             String
+  serviceJobId         String   @unique
+  cameraGroup          String?
+  boardType            String
+  columns              Int
+  rows                 Int
+  squareSizeMm         Float
+  markerSizeMm         Float?
+  dictionary           String?
+  resolutionWidth      Int
+  resolutionHeight     Int
+  reprojectionError    Float
+  maxReprojectionError Float
+  calibrationPath      String
+  parameters           Json
+  createdAt            DateTime @default(now())
+
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+
+  @@index([cameraId, createdAt])
 }
 
 // ─── Region Management ──────────────────────────────────────────────────────
@@ -205,14 +230,14 @@ model Camera {
 // "Stall" in the product spec maps to the existing Booth entity.
 
 model Region {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   description String?
   marketId    String
   color       String? // optional UI hint, e.g. "#22c55e"
   type        RegionType @default(RESTRICTED_AREA)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
 
   market        Market         @relation(fields: [marketId], references: [id])

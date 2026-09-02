@@ -75,6 +75,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }}
             NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL=${{ vars.NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL || 'http://localhost:8000' }}
+            NEXT_PUBLIC_FRUIT_PIPELINE_API_URL=${{ vars.NEXT_PUBLIC_FRUIT_PIPELINE_API_URL || 'http://localhost:8010' }}
             NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL=${{ vars.NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL || 'http://localhost:8889' }}
             NEXT_PUBLIC_MEDIAMTX_HLS_URL=${{ vars.NEXT_PUBLIC_MEDIAMTX_HLS_URL || 'http://localhost:8888' }}
             VERSION=${{ env.VERSION_LABEL }}

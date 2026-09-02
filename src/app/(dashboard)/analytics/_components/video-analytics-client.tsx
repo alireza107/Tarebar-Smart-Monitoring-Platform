@@ -484,7 +484,7 @@ export function VideoAnalyticsClient({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده' : 'تحلیل ویدیو'}</h1>
+        <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده افراد' : 'مانیتورینگ افراد'}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === 'live'
             ? 'تحلیل‌ها را برای هر دوربین جداگانه روشن یا خاموش کنید و نتیجه پردازش‌شده را زنده ببینید.'

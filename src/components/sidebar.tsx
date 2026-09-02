@@ -7,8 +7,8 @@ import { NAV_ITEMS } from '@/lib/nav-permissions'
 import type { Role } from '@/lib/permissions'
 import {
   Activity, BarChart3, BellRing, BrainCircuit, Building2, ChartNoAxesCombined,
-  Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor, ShieldCheck,
-  TimerReset,
+  Apple, Camera, Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor,
+  ShieldCheck, TimerReset,
 } from 'lucide-react'
 
 const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -16,6 +16,8 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   '/live-operations': Monitor,
   '/live-analytics': BrainCircuit,
   '/analytics': Film,
+  '/fruit-analysis': Apple,
+  '/camera-calibration': Camera,
   '/traffic-density': ChartNoAxesCombined,
   '/queue-service': TimerReset,
   '/spatial': Map,
