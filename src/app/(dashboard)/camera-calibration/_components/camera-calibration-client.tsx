@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Loader2, Radio, Upload, XCircle } from 'lucide-react'
@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { fruitApiJson } from '@/lib/fruit-api'
+import { derivePlaybackUrls } from '@/modules/camera/stream'
 import type { Camera } from '@/modules/camera/types'
+import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/camera-stream-player'
 
 type CalibrationJob = {
   id: string
@@ -44,6 +46,63 @@ async function appJson<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+function recordingMimeType(): string | undefined {
+  const candidates = [
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4',
+  ]
+  return candidates.find(candidate => MediaRecorder.isTypeSupported(candidate))
+}
+
+function recordStream(stream: MediaStream, seconds: number): Promise<{ blob: Blob; extension: string }> {
+  return new Promise((resolve, reject) => {
+    const mimeType = recordingMimeType()
+    let recorder: MediaRecorder
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    } catch (error) {
+      reject(error)
+      return
+    }
+
+    const chunks: Blob[] = []
+    const timer = window.setTimeout(() => {
+      if (recorder.state !== 'inactive') recorder.stop()
+    }, seconds * 1000)
+    recorder.ondataavailable = event => {
+      if (event.data.size > 0) chunks.push(event.data)
+    }
+    recorder.onerror = () => {
+      window.clearTimeout(timer)
+      reject(new Error('ضبط ویدیوی WebRTC ناموفق بود'))
+    }
+    recorder.onstop = () => {
+      window.clearTimeout(timer)
+      const type = recorder.mimeType || mimeType || 'video/webm'
+      const blob = new Blob(chunks, { type })
+      if (!blob.size) {
+        reject(new Error('ویدیوی ضبط‌شده خالی است'))
+        return
+      }
+      resolve({ blob, extension: type.includes('mp4') ? 'mp4' : 'webm' })
+    }
+    recorder.start(1000)
+  })
+}
+
+function calibrationErrorMessage(error: string | null | undefined): string {
+  if (!error) return 'کالیبراسیون ناموفق بود. لطفاً دوباره تلاش کنید.'
+  const reprojectionError = error.match(
+    /Calibration reprojection error\s+([\d.]+)px exceeds limit\s+([\d.]+)px/i,
+  )
+  if (reprojectionError) {
+    return `خطای کالیبراسیون زیاد است (${reprojectionError[1]} پیکسل؛ حد مجاز ${reprojectionError[2]} پیکسل). لطفاً ویدیو را دوباره ضبط کنید و صفحه را واضح و از زاویه‌های مختلف نشان دهید.`
+  }
+  return error
+}
+
 export function CameraCalibrationClient() {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
@@ -51,6 +110,10 @@ export function CameraCalibrationClient() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [cameraId, setCameraId] = useState('')
   const [sourceMode, setSourceMode] = useState<'upload' | 'live'>('upload')
+  const [webRtcStream, setWebRtcStream] = useState<MediaStream | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [recordingSecondsLeft, setRecordingSecondsLeft] = useState(0)
+  const [recordingError, setRecordingError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState({
     cameraId: '', cameraGroup: '', boardType: 'charuco', columns: 11, rows: 8,
     squareSizeMm: 20, markerSizeMm: 15, dictionary: 'DICT_5X5_50', maxError: 2.5,
@@ -80,16 +143,9 @@ export function CameraCalibrationClient() {
   }, [cameraId, cameras.data])
 
   const start = useMutation({
-    mutationFn: (request: { mode: 'upload'; data: FormData } | { mode: 'live'; cameraId: string; data: Record<string, unknown> }) =>
-      request.mode === 'upload'
-        ? fruitApiJson<{ data: CalibrationJob }>('/api/v1/calibrations', {
-            method: 'POST', body: request.data,
-          })
-        : appJson<{ data: CalibrationJob }>(`/api/cameras/${request.cameraId}/calibration-capture`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request.data),
-          }),
+    mutationFn: (data: FormData) => fruitApiJson<{ data: CalibrationJob }>('/api/v1/calibrations', {
+      method: 'POST', body: data,
+    }),
     onSuccess: response => {
       persistedJob.current = null
       setJobId(response.data.id)
@@ -135,7 +191,7 @@ export function CameraCalibrationClient() {
     })
   }, [job.data, persist, submitted])
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     const values = {
@@ -151,26 +207,37 @@ export function CameraCalibrationClient() {
     }
     setSubmitted(values)
     data.set('camera_id', cameraId)
-    const request = sourceMode === 'upload'
-      ? { mode: 'upload' as const, data }
-      : {
-          mode: 'live' as const,
-          cameraId,
-          data: {
-            camera_group: values.cameraGroup || null,
-            board: values.boardType,
-            columns: values.columns,
-            rows: values.rows,
-            square_size_mm: values.squareSizeMm,
-            marker_size_mm: values.markerSizeMm,
-            dictionary: values.dictionary,
-            frame_step: Number(data.get('frame_step')),
-            min_frames: Number(data.get('min_frames')),
-            max_reprojection_error: values.maxError,
-            capture_seconds: Number(data.get('capture_seconds')),
-          },
-        }
-    start.mutate(request, {
+    setRecordingError(null)
+
+    if (sourceMode === 'live') {
+      if (!webRtcStream?.getVideoTracks().some(track => track.readyState === 'live')) {
+        setRecordingError('اتصال WebRTC هنوز آماده نیست؛ پس از نمایش تصویر دوباره تلاش کنید.')
+        return
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        setRecordingError('این مرورگر از ضبط WebRTC پشتیبانی نمی‌کند.')
+        return
+      }
+      const captureSeconds = Number(data.get('capture_seconds'))
+      setRecording(true)
+      setRecordingSecondsLeft(captureSeconds)
+      const countdown = window.setInterval(() => {
+        setRecordingSecondsLeft(value => Math.max(0, value - 1))
+      }, 1000)
+      try {
+        const capture = await recordStream(webRtcStream, captureSeconds)
+        data.set('files', capture.blob, `calibration-${cameraId}.${capture.extension}`)
+      } catch (error) {
+        setRecordingError(error instanceof Error ? error.message : 'ضبط ویدیوی WebRTC ناموفق بود')
+        return
+      } finally {
+        window.clearInterval(countdown)
+        setRecording(false)
+        setRecordingSecondsLeft(0)
+      }
+    }
+
+    start.mutate(data, {
       onSuccess: response => window.localStorage.setItem('pending-camera-calibration', JSON.stringify({
         jobId: response.data.id,
         submitted: values,
@@ -178,9 +245,23 @@ export function CameraCalibrationClient() {
     })
   }
 
-  const currentJob = job.data?.data
-  const busy = start.isPending || ['queued', 'capturing', 'running'].includes(currentJob?.status ?? '')
+  const onMediaStreamChange = useCallback((stream: MediaStream | null) => {
+    setWebRtcStream(stream)
+  }, [])
+
+  useEffect(() => {
+    setWebRtcStream(null)
+    setRecordingError(null)
+  }, [cameraId, sourceMode])
+
   const selectedCamera = cameras.data?.data.find(camera => camera.id === cameraId)
+  const playbackUrls = useMemo(
+    () => derivePlaybackUrls(selectedCamera?.streamUrl),
+    [selectedCamera?.streamUrl],
+  )
+
+  const currentJob = job.data?.data
+  const busy = recording || start.isPending || ['queued', 'capturing', 'running'].includes(currentJob?.status ?? '')
 
   return <div className="space-y-6">
     <div>
@@ -233,21 +314,25 @@ export function CameraCalibrationClient() {
           <Field label="مدت ضبط (ثانیه)" name="capture_seconds" type="number" defaultValue="30" min="5" max="120" />
           <div className="space-y-2 md:col-span-2 lg:col-span-3">
             <Label>پیش‌نمایش زنده</Label>
-            {selectedCamera?.streamUrl ? <div className="overflow-hidden rounded-lg border bg-black">
-              {/* MJPEG is a continuous response and cannot use next/image optimization. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/cameras/${cameraId}/preview-stream`} alt={`پیش‌نمایش زنده ${selectedCamera.name}`} className="mx-auto block max-h-[28rem] max-w-full object-contain" />
+            {playbackUrls ? <div className="overflow-hidden rounded-lg border bg-black">
+              <CameraStreamPlayer
+                key={cameraId}
+                whepSrc={playbackUrls.whep}
+                hlsSrc={playbackUrls.hls}
+                onMediaStreamChange={onMediaStreamChange}
+              />
             </div> : <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">برای دوربین انتخاب‌شده آدرس استریم تنظیم نشده است. دوربین دیگری انتخاب کنید یا از بارگذاری فایل استفاده کنید.</p>}
-            <p className="text-xs text-muted-foreground">پس از شروع ضبط، صفحه را آرام حرکت دهید و زاویه‌ها و بخش‌های مختلف تصویر را پوشش دهید.</p>
+            <p className="text-xs text-muted-foreground">پیش‌نمایش و ضبط با WebRTC انجام می‌شود. پس از شروع ضبط، صفحه را آرام حرکت دهید و زاویه‌ها و بخش‌های مختلف تصویر را پوشش دهید.</p>
+            {recording && <p className="text-sm font-medium text-red-600">در حال ضبط WebRTC… {recordingSecondsLeft} ثانیه باقی مانده</p>}
           </div>
         </>}
       </div>
-      {(start.error || job.error || persist.error) && <p className="text-sm text-red-600">{(start.error ?? job.error ?? persist.error)?.message}</p>}
+      {(recordingError || start.error || job.error || persist.error) && <p className="text-sm text-red-600">{recordingError ?? (start.error ?? job.error ?? persist.error)?.message}</p>}
       {currentJob && <div className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
         {['queued', 'capturing', 'running'].includes(currentJob.status) ? <Loader2 className="size-4 animate-spin" /> : currentJob.status === 'completed' ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
-        <span>{currentJob.status === 'completed' ? `کالیبراسیون با خطای ${currentJob.calibration?.reprojection_error.toFixed(3)} پیکسل ذخیره شد.` : currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'capturing' ? `در حال ضبط ${currentJob.capture_seconds ?? ''} ثانیه از استریم؛ صفحه را آرام در تصویر حرکت دهید…` : 'در حال تشخیص صفحه و محاسبه پارامترهای دوربین…'}</span>
+        <span>{currentJob.status === 'completed' ? `کالیبراسیون با خطای ${currentJob.calibration?.reprojection_error.toFixed(3)} پیکسل ذخیره شد.` : currentJob.status === 'failed' ? calibrationErrorMessage(currentJob.error) : currentJob.status === 'capturing' ? `در حال ضبط ${currentJob.capture_seconds ?? ''} ثانیه از استریم؛ صفحه را آرام در تصویر حرکت دهید…` : 'در حال تشخیص صفحه و محاسبه پارامترهای دوربین…'}</span>
       </div>}
-      <Button type="submit" disabled={busy || !cameraId || (sourceMode === 'live' && !selectedCamera?.streamUrl)}>{sourceMode === 'live' ? <Radio /> : <Upload />}{busy ? 'در حال کالیبراسیون…' : sourceMode === 'live' ? 'شروع ضبط و کالیبراسیون' : 'شروع کالیبراسیون'}</Button>
+      <Button type="submit" disabled={busy || !cameraId || (sourceMode === 'live' && (!playbackUrls || !webRtcStream))}>{sourceMode === 'live' ? <Radio /> : <Upload />}{recording ? 'در حال ضبط…' : busy ? 'در حال کالیبراسیون…' : sourceMode === 'live' ? 'شروع ضبط WebRTC و کالیبراسیون' : 'شروع کالیبراسیون'}</Button>
     </form>
 
     <section className="rounded-xl border bg-card p-5 shadow-sm">
