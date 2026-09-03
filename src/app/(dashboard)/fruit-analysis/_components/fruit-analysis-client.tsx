@@ -150,10 +150,10 @@ export function FruitAnalysisClient() {
     {input && <form onSubmit={runAnalysis} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
       <div><h2 className="font-semibold">۲. انتخاب چهار گوشه پالت</h2><p className="mt-1 text-xs text-muted-foreground">به ترتیب روی گوشه‌های بالا-چپ، بالا-راست، پایین-راست و پایین-چپ کلیک کنید.</p></div>
       {input.allow_unsafe_resize && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">حالت آزمایشی فعال است؛ نتایج اندازه‌گیری فیزیکی این اجرا معتبر نیست.</p>}
-      <div className="mx-auto max-w-5xl overflow-hidden rounded-lg border bg-black">
-        <div className="relative" style={{ aspectRatio: `${input.width} / ${input.height}` }}>
+      <div className="flex justify-center">
+        <div className="relative inline-block max-w-full overflow-hidden rounded-lg border bg-black shadow-sm">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${FRUIT_API_BASE}${input.preview_url}`} alt="فریم انتخاب پالت" className="absolute inset-0 size-full object-contain" />
+          <img src={`${FRUIT_API_BASE}${input.preview_url}`} alt="فریم انتخاب پالت" className="block h-auto max-h-[min(70vh,45rem)] max-w-full object-contain" />
           <svg className="absolute inset-0 size-full cursor-crosshair" viewBox={`0 0 ${input.width} ${input.height}`} preserveAspectRatio="none" onClick={choosePoint} role="application" aria-label="انتخاب گوشه‌های پالت">
             {points.length > 1 && <polyline points={points.map(point => `${point.x},${point.y}`).join(' ')} fill={points.length === 4 ? 'rgba(16,185,129,.18)' : 'none'} stroke="#10b981" strokeWidth={Math.max(2, input.width / 500)} />}
             {points.map((point, index) => <g key={index}><circle cx={point.x} cy={point.y} r={Math.max(6, input.width / 130)} fill="#10b981" stroke="white" strokeWidth={2} /><text x={point.x + 10} y={point.y - 10} fill="white" stroke="black" strokeWidth={0.8} fontSize={Math.max(16, input.width / 50)} paintOrder="stroke">{CORNER_LABELS[index]}</text></g>)}

@@ -7,7 +7,7 @@ import { NAV_ITEMS } from '@/lib/nav-permissions'
 import type { Role } from '@/lib/permissions'
 import {
   Activity, BarChart3, BellRing, BrainCircuit, Building2, ChartNoAxesCombined,
-  Apple, Camera, Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor,
+  Camera, Film, GitCompareArrows, HeartPulse, LayoutDashboard, Map, Monitor,
   ShieldCheck, TimerReset,
 } from 'lucide-react'
 
@@ -15,8 +15,7 @@ const NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   '/dashboard': LayoutDashboard,
   '/live-operations': Monitor,
   '/live-analytics': BrainCircuit,
-  '/analytics': Film,
-  '/fruit-analysis': Apple,
+  '/video-analysis': Film,
   '/camera-calibration': Camera,
   '/traffic-density': ChartNoAxesCombined,
   '/queue-service': TimerReset,
@@ -54,12 +53,17 @@ export function Sidebar() {
         {GROUPS.map((group) => {
           const items = visibleItems.filter((item) => item.group === group.id)
           if (items.length === 0) return null
-          return <div key={group.id}><p className="mb-1.5 px-3 text-[10px] font-semibold text-sidebar-foreground/30">{group.label}</p><ul className="space-y-0.5">{items.map((item) => <NavigationItem key={item.href} item={item} active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />)}</ul></div>
+          return <div key={group.id}><p className="mb-1.5 px-3 text-[10px] font-semibold text-sidebar-foreground/30">{group.label}</p><ul className="space-y-0.5">{items.map((item) => <NavigationItem key={item.href} item={item} active={isNavigationItemActive(pathname, item)} />)}</ul></div>
         })}
       </nav>
       <div className="shrink-0 border-t border-sidebar-border px-4 py-3"><div className="flex items-center gap-2"><span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex size-2 rounded-full bg-emerald-500" /></span><span className="text-xs text-sidebar-foreground/45">سامانه فعال</span></div></div>
     </aside>
   )
+}
+
+export function isNavigationItemActive(pathname: string, item: (typeof NAV_ITEMS)[number]) {
+  const paths = [item.href, ...(item.activePaths ?? [])]
+  return paths.some(path => pathname === path || pathname.startsWith(`${path}/`))
 }
 
 function NavigationItem({ item, active }: { item: (typeof NAV_ITEMS)[number]; active: boolean }) {
