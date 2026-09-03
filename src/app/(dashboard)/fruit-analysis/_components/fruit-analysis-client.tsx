@@ -3,7 +3,7 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, Play, Radio, RotateCcw, Upload } from 'lucide-react'
+import { Ban, CheckCircle2, Loader2, Play, Radio, RotateCcw, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,7 +35,7 @@ type FruitResult = {
   average_fruit_size_mm: { width: number; length: number; equivalent_diameter: number } | null
   frames: FruitFrame[]
 }
-type FruitJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+type FruitJobStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
 type FruitLiveEvent = {
   type: string
   job_id: string
@@ -66,6 +66,7 @@ async function appJson<T>(path: string): Promise<T> {
 const CORNER_LABELS = ['TL', 'TR', 'BR', 'BL']
 
 export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' | 'live' }) {
+  const queryClient = useQueryClient()
   const [cameraId, setCameraId] = useState('')
   const [input, setInput] = useState<InputPreview | null>(null)
   const [points, setPoints] = useState<Point[]>([])
@@ -118,7 +119,11 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
     queryKey: ['fruit-job', jobId],
     queryFn: () => fruitApiJson(`/api/v1/jobs/${jobId}`),
     enabled: Boolean(jobId),
-    refetchInterval: query => ['queued', 'running'].includes(query.state.data?.data.status ?? '') ? 2000 : false,
+    refetchInterval: query => ['queued', 'running', 'cancelling'].includes(query.state.data?.data.status ?? '') ? 2000 : false,
+  })
+  const cancel = useMutation({
+    mutationFn: () => fruitApiJson<{ data: FruitJob }>(`/api/v1/jobs/${jobId}/cancel`, { method: 'POST' }),
+    onSuccess: response => queryClient.setQueryData(['fruit-job', jobId], response),
   })
 
   function submitUpload(event: FormEvent<HTMLFormElement>) {
@@ -166,6 +171,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
   const { live, connected } = useFruitJobLive(jobId, currentJob)
   const result = currentJob?.result
   const selectedCalibration = latestByCamera.get(cameraId)
+  const jobIsActive = ['queued', 'running', 'cancelling'].includes(currentJob?.status ?? '')
 
   return <div className="space-y-6">
     <div>
@@ -218,10 +224,13 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
         <NumberField label="حداکثر خطای کالیبراسیون" name="max_calibration_error" defaultValue="3.0" min="0.1" step="0.1" />
         <NumberField label="حداقل همپوشانی با پالت" name="min_pallet_overlap" defaultValue="0.5" min="0" max="1" step="0.05" />
       </div>
-      {(start.error || job.error) && <p className="text-sm text-red-600">{(start.error ?? job.error)?.message}</p>}
-      {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…</span>}</div>}
-      {currentJob && ['queued', 'running'].includes(currentJob.status) && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} />}
-      <Button type="submit" disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />{mode === 'live' ? 'شروع تحلیل زنده میوه' : 'شروع تحلیل میوه'}</Button>
+      {(start.error || job.error || cancel.error) && <p className="text-sm text-red-600">{(start.error ?? job.error ?? cancel.error)?.message}</p>}
+      {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : currentJob.status === 'cancelled' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'cancelled' ? <span className="flex items-center gap-2"><Ban className="size-4" />پردازش متوقف شد.</span> : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />{currentJob.status === 'cancelling' ? 'در حال توقف پردازش…' : 'مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…'}</span>}</div>}
+      {currentJob && jobIsActive && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} />}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={points.length !== 4 || start.isPending || jobIsActive}><Play />{mode === 'live' ? 'شروع تحلیل زنده میوه' : 'شروع تحلیل میوه'}</Button>
+        {currentJob && ['queued', 'running'].includes(currentJob.status) && <Button type="button" variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}><Ban />{cancel.isPending ? 'در حال ارسال درخواست توقف…' : 'توقف پردازش'}</Button>}
+      </div>
     </form>}
 
     {result && <ResultView result={result} />}
@@ -250,7 +259,7 @@ function useFruitJobLive(jobId: string | null, job: FruitJob | undefined) {
   }, [polledLive])
 
   useEffect(() => {
-    if (!jobId || !jobStatus || !['queued', 'running'].includes(jobStatus)) return
+    if (!jobId || !jobStatus || !['queued', 'running', 'cancelling'].includes(jobStatus)) return
     const source = new EventSource(`${FRUIT_API_BASE}/api/v1/jobs/${jobId}/events`)
     const receive = (raw: Event) => {
       try {
@@ -260,13 +269,13 @@ function useFruitJobLive(jobId: string | null, job: FruitJob | undefined) {
           metrics: { ...(previous?.metrics ?? {}), ...next.metrics },
           preview_reference: next.preview_reference ?? previous?.preview_reference ?? null,
         }))
-        if (['job_completed', 'job_failed'].includes(next.type)) {
+        if (['job_completed', 'job_failed', 'job_cancelled'].includes(next.type)) {
           source.close()
           queryClient.invalidateQueries({ queryKey: ['fruit-job', jobId] })
         }
       } catch {}
     }
-    for (const type of ['job_started', 'preview_updated', 'job_completed', 'job_failed']) {
+    for (const type of ['job_started', 'preview_updated', 'warning', 'job_completed', 'job_failed', 'job_cancelled']) {
       source.addEventListener(type, receive)
     }
     source.onopen = () => setConnected(true)
