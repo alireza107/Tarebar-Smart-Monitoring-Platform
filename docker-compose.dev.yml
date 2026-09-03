@@ -54,6 +54,7 @@ services:
       MEDIAMTX_RTSP_URL: ${MEDIAMTX_INTERNAL_RTSP_URL:-rtsp://mediamtx:8554}
       MEDIAMTX_API_URL: ${MEDIAMTX_INTERNAL_API_URL:-http://mediamtx:9997}
       VIDEO_ANALYTICS_API_URL: ${VIDEO_ANALYTICS_INTERNAL_API_URL:-http://video-analytics:8000}
+      FRUIT_PIPELINE_API_URL: ${FRUIT_PIPELINE_INTERNAL_API_URL:-http://fruit-pipeline:8010}
       ANALYTICS_READ_KEY: ${ANALYTICS_READ_KEY:-local-read-key-change-me}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"

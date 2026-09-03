@@ -324,7 +324,7 @@ export function CameraCard({ camera }: CameraCardProps) {
                 <BrainCircuit />
                 {startAnalytics.isPending ? 'در حال اتصال…' : 'فعال‌سازی تحلیل انتخاب‌شده'}
               </Button>
-              <Button type="button" variant="outline" render={<Link href="/live-analytics" />}>
+              <Button type="button" variant="outline" render={<Link href="/live-analytics/people" />}>
                 مشاهده خروجی‌ها
               </Button>
             </DialogFooter>

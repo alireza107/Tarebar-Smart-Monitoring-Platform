@@ -3,7 +3,7 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, Play, RotateCcw, Upload } from 'lucide-react'
+import { CheckCircle2, Loader2, Play, Radio, RotateCcw, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -65,7 +65,7 @@ async function appJson<T>(path: string): Promise<T> {
 
 const CORNER_LABELS = ['TL', 'TR', 'BR', 'BL']
 
-export function FruitAnalysisClient() {
+export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' | 'live' }) {
   const [cameraId, setCameraId] = useState('')
   const [input, setInput] = useState<InputPreview | null>(null)
   const [points, setPoints] = useState<Point[]>([])
@@ -79,8 +79,10 @@ export function FruitAnalysisClient() {
     return map
   }, [calibrations.data])
   const calibratedCameras = useMemo(
-    () => (cameras.data?.data ?? []).filter(camera => latestByCamera.has(camera.id)),
-    [cameras.data, latestByCamera],
+    () => (cameras.data?.data ?? []).filter(camera =>
+      latestByCamera.has(camera.id) && (mode === 'recorded' || Boolean(camera.streamUrl)),
+    ),
+    [cameras.data, latestByCamera, mode],
   )
   useEffect(() => {
     if (!cameraId && calibratedCameras[0]) setCameraId(calibratedCameras[0].id)
@@ -88,6 +90,22 @@ export function FruitAnalysisClient() {
 
   const upload = useMutation({
     mutationFn: (formData: FormData) => fruitApiJson<{ data: InputPreview }>('/api/v1/inputs', { method: 'POST', body: formData }),
+    onSuccess: response => { setInput(response.data); setPoints([]); setJobId(null) },
+  })
+  const prepareLive = useMutation({
+    mutationFn: async (allowUnsafeResize: boolean) => {
+      const response = await fetch(`/api/cameras/${cameraId}/fruit-input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowUnsafeResize }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = body?.detail?.detail ?? body?.detail ?? body?.error
+        throw new Error(typeof detail === 'string' ? detail : 'دریافت فریم زنده ممکن نشد')
+      }
+      return body as { data: InputPreview }
+    },
     onSuccess: response => { setInput(response.data); setPoints([]); setJobId(null) },
   })
   const start = useMutation({
@@ -110,6 +128,13 @@ export function FruitAnalysisClient() {
     upload.mutate(data)
   }
 
+  function prepareLiveFrame(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!cameraId) return
+    const data = new FormData(event.currentTarget)
+    prepareLive.mutate(data.get('allow_unsafe_resize') === 'true')
+  }
+
   function choosePoint(event: MouseEvent<SVGSVGElement>) {
     if (!input || points.length >= 4) return
     const rect = event.currentTarget.getBoundingClientRect()
@@ -129,7 +154,7 @@ export function FruitAnalysisClient() {
       corners: points,
       pallet_type: data.get('pallet_type'),
       frame_step: Number(data.get('frame_step')),
-      max_frames: data.get('max_frames') ? Number(data.get('max_frames')) : null,
+      max_frames: data.get('max_frames') ? Number(data.get('max_frames')) : (mode === 'live' ? 100 : null),
       max_calibration_error: Number(data.get('max_calibration_error')),
       min_pallet_overlap: Number(data.get('min_pallet_overlap')),
       resize_to_calibration: true,
@@ -144,28 +169,32 @@ export function FruitAnalysisClient() {
 
   return <div className="space-y-6">
     <div>
-      <h1 className="text-xl font-bold">تحلیل میوه</h1>
-      <p className="mt-1 text-sm text-muted-foreground">دوربین کالیبره‌شده را انتخاب کنید، محدوده پالت را مشخص کنید و تعداد و اندازه میوه‌ها را ببینید.</p>
+      <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده میوه' : 'تحلیل میوه'}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{mode === 'live'
+        ? 'دوربین زنده کالیبره‌شده را انتخاب کنید، محدوده پالت را روی فریم زنده مشخص کنید و پردازش را آغاز کنید.'
+        : 'دوربین کالیبره‌شده را انتخاب کنید، محدوده پالت را مشخص کنید و تعداد و اندازه میوه‌ها را ببینید.'}</p>
     </div>
 
     {!calibrations.isLoading && calibratedCameras.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      برای تحلیل اندازه ابتدا باید یک دوربین را <Link href="/camera-calibration" className="font-semibold underline">کالیبره کنید</Link>.
+      {mode === 'live' ? 'برای تحلیل زنده، یک دوربین دارای استریم را ' : 'برای تحلیل اندازه ابتدا باید یک دوربین را '}<Link href="/camera-calibration" className="font-semibold underline">کالیبره کنید</Link>.
     </div>}
 
-    <form onSubmit={submitUpload} className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">
-      <h2 className="font-semibold">۱. انتخاب دوربین و ورودی</h2>
+    <form onSubmit={mode === 'live' ? prepareLiveFrame : submitUpload} className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">
+      <h2 className="font-semibold">۱. انتخاب دوربین و {mode === 'live' ? 'دریافت فریم زنده' : 'ورودی'}</h2>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5"><Label htmlFor="fruit-camera">دوربین کالیبره‌شده</Label><select id="fruit-camera" value={cameraId} onChange={event => { setCameraId(event.target.value); setInput(null); setPoints([]) }} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
           {calibratedCameras.map(camera => <option key={camera.id} value={camera.id}>{camera.name}</option>)}
         </select>{selectedCalibration && <p className="text-xs text-muted-foreground" dir="ltr">{selectedCalibration.resolutionWidth}×{selectedCalibration.resolutionHeight} · RMS {selectedCalibration.reprojectionError.toFixed(3)} px</p>}</div>
-        <div className="space-y-1.5"><Label htmlFor="fruit-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-file" name="file" type="file" accept="image/*,video/*,.mov,.mkv,.avi" required /></div>
+        {mode === 'recorded'
+          ? <div className="space-y-1.5"><Label htmlFor="fruit-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-file" name="file" type="file" accept="image/*,video/*,.mov,.mkv,.avi" required /></div>
+          : <div className="rounded-lg border bg-muted/30 p-4 text-sm leading-6 text-muted-foreground">یک فریم تازه از استریم دوربین گرفته و مطابق رزولوشن کالیبراسیون آماده می‌شود.</div>}
       </div>
       <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <input name="allow_unsafe_resize" type="checkbox" value="true" className="mt-0.5 size-4" />
         <span><span className="font-semibold">تغییر اندازه اجباری فقط برای آزمایش</span><span className="mt-1 block text-xs">تصاویر با نسبت ابعاد متفاوت کشیده می‌شوند؛ تعداد و تشخیص قابل آزمایش است، اما اندازه‌گیری میلی‌متری معتبر نیست.</span></span>
       </label>
-      {upload.error && <p className="text-sm text-red-600">{upload.error.message}</p>}
-      <Button type="submit" disabled={!cameraId || upload.isPending}>{upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}{upload.isPending ? 'در حال آماده‌سازی فریم…' : 'بارگذاری و نمایش فریم'}</Button>
+      {(upload.error || prepareLive.error) && <p className="text-sm text-red-600">{(upload.error ?? prepareLive.error)?.message}</p>}
+      <Button type="submit" disabled={!cameraId || upload.isPending || prepareLive.isPending}>{upload.isPending || prepareLive.isPending ? <Loader2 className="animate-spin" /> : mode === 'live' ? <Radio /> : <Upload />}{upload.isPending || prepareLive.isPending ? 'در حال آماده‌سازی فریم…' : mode === 'live' ? 'دریافت و نمایش فریم زنده' : 'بارگذاری و نمایش فریم'}</Button>
     </form>
 
     {input && <form onSubmit={runAnalysis} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
@@ -185,14 +214,14 @@ export function FruitAnalysisClient() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5"><Label htmlFor="pallet_type">نوع پالت</Label><select id="pallet_type" name="pallet_type" defaultValue="standard_large" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="standard_large">استاندارد بزرگ (۱۲۰۰×۱۸۰۰)</option><option value="standard_small">استاندارد کوچک (۱۰۰۰×۱۲۰۰)</option><option value="calibration_board">صفحه کالیبراسیون</option></select></div>
         <NumberField label="فاصله فریم‌ها" name="frame_step" defaultValue="10" min="1" />
-        <NumberField label="حداکثر فریم (اختیاری)" name="max_frames" min="1" />
+        <NumberField label={mode === 'live' ? 'حداکثر فریم زنده' : 'حداکثر فریم (اختیاری)'} name="max_frames" defaultValue={mode === 'live' ? '100' : undefined} min="1" required={mode === 'live'} />
         <NumberField label="حداکثر خطای کالیبراسیون" name="max_calibration_error" defaultValue="3.0" min="0.1" step="0.1" />
         <NumberField label="حداقل همپوشانی با پالت" name="min_pallet_overlap" defaultValue="0.5" min="0" max="1" step="0.05" />
       </div>
       {(start.error || job.error) && <p className="text-sm text-red-600">{(start.error ?? job.error)?.message}</p>}
       {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…</span>}</div>}
       {currentJob && ['queued', 'running'].includes(currentJob.status) && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} />}
-      <Button type="submit" disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />شروع تحلیل میوه</Button>
+      <Button type="submit" disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />{mode === 'live' ? 'شروع تحلیل زنده میوه' : 'شروع تحلیل میوه'}</Button>
     </form>}
 
     {result && <ResultView result={result} />}

@@ -7,7 +7,8 @@ import { Bell, Menu } from 'lucide-react'
 import { isNavigationItemActive, useVisibleNavigation } from './sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'نمای کلی', '/live-operations': 'عملیات زنده', '/live-analytics': 'تحلیل زنده دوربین‌ها',
+  '/dashboard': 'نمای کلی', '/live-operations': 'عملیات زنده', '/live-analytics/people': 'مانیتورینگ زنده افراد',
+  '/live-analytics/fruit': 'تحلیل زنده میوه', '/live-analytics': 'تحلیل زنده دوربین‌ها',
   '/video-analysis': 'تحلیل ویدیو', '/analytics': 'مانیتورینگ افراد', '/fruit-analysis': 'تحلیل میوه',
   '/traffic-density': 'تردد و تراکم',
   '/queue-service': 'صف و خدمت‌رسانی', '/spatial': 'نقشه حرارتی و رفتار مکانی', '/events': 'رویدادها',
