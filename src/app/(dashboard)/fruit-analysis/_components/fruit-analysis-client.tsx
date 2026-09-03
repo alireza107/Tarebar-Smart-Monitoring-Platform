@@ -19,7 +19,7 @@ type Calibration = {
   createdAt: string
   camera: { id: string; name: string }
 }
-type InputPreview = { id: string; filename: string; camera_id: string; width: number; height: number; preview_url: string }
+type InputPreview = { id: string; filename: string; camera_id: string; width: number; height: number; preview_url: string; allow_unsafe_resize: boolean }
 type Point = { x: number; y: number }
 type FruitSize = { width_mm: number; length_mm: number; equivalent_diameter_mm: number; area_mm2: number }
 type FruitFrame = {
@@ -113,6 +113,7 @@ export function FruitAnalysisClient() {
       max_calibration_error: Number(data.get('max_calibration_error')),
       min_pallet_overlap: Number(data.get('min_pallet_overlap')),
       resize_to_calibration: true,
+      allow_unsafe_resize: input.allow_unsafe_resize,
     })
   }
 
@@ -138,12 +139,17 @@ export function FruitAnalysisClient() {
         </select>{selectedCalibration && <p className="text-xs text-muted-foreground" dir="ltr">{selectedCalibration.resolutionWidth}×{selectedCalibration.resolutionHeight} · RMS {selectedCalibration.reprojectionError.toFixed(3)} px</p>}</div>
         <div className="space-y-1.5"><Label htmlFor="fruit-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-file" name="file" type="file" accept="image/*,video/*,.mov,.mkv,.avi" required /></div>
       </div>
+      <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <input name="allow_unsafe_resize" type="checkbox" value="true" className="mt-0.5 size-4" />
+        <span><span className="font-semibold">تغییر اندازه اجباری فقط برای آزمایش</span><span className="mt-1 block text-xs">تصاویر با نسبت ابعاد متفاوت کشیده می‌شوند؛ تعداد و تشخیص قابل آزمایش است، اما اندازه‌گیری میلی‌متری معتبر نیست.</span></span>
+      </label>
       {upload.error && <p className="text-sm text-red-600">{upload.error.message}</p>}
-      <Button disabled={!cameraId || upload.isPending}>{upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}{upload.isPending ? 'در حال آماده‌سازی فریم…' : 'بارگذاری و نمایش فریم'}</Button>
+      <Button type="submit" disabled={!cameraId || upload.isPending}>{upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}{upload.isPending ? 'در حال آماده‌سازی فریم…' : 'بارگذاری و نمایش فریم'}</Button>
     </form>
 
     {input && <form onSubmit={runAnalysis} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
       <div><h2 className="font-semibold">۲. انتخاب چهار گوشه پالت</h2><p className="mt-1 text-xs text-muted-foreground">به ترتیب روی گوشه‌های بالا-چپ، بالا-راست، پایین-راست و پایین-چپ کلیک کنید.</p></div>
+      {input.allow_unsafe_resize && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">حالت آزمایشی فعال است؛ نتایج اندازه‌گیری فیزیکی این اجرا معتبر نیست.</p>}
       <div className="mx-auto max-w-5xl overflow-hidden rounded-lg border bg-black">
         <div className="relative" style={{ aspectRatio: `${input.width} / ${input.height}` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -164,7 +170,7 @@ export function FruitAnalysisClient() {
       </div>
       {(start.error || job.error) && <p className="text-sm text-red-600">{(start.error ?? job.error)?.message}</p>}
       {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…</span>}</div>}
-      <Button disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />شروع تحلیل میوه</Button>
+      <Button type="submit" disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />شروع تحلیل میوه</Button>
     </form>}
 
     {result && <ResultView result={result} />}
