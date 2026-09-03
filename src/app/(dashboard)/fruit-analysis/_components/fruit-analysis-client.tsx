@@ -71,6 +71,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
   const [input, setInput] = useState<InputPreview | null>(null)
   const [points, setPoints] = useState<Point[]>([])
   const [jobId, setJobId] = useState<string | null>(null)
+  const [palletType, setPalletType] = useState('standard_large')
 
   const cameras = useQuery<{ data: Camera[] }>({ queryKey: ['cameras'], queryFn: () => appJson('/api/cameras') })
   const calibrations = useQuery<{ data: Calibration[] }>({ queryKey: ['camera-calibrations'], queryFn: () => appJson('/api/camera-calibrations') })
@@ -153,11 +154,14 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
     event.preventDefault()
     if (!input || points.length !== 4) return
     const data = new FormData(event.currentTarget)
+    const customPallet = palletType === 'custom'
     start.mutate({
       input_id: input.id,
       camera_id: cameraId,
       corners: points,
-      pallet_type: data.get('pallet_type'),
+      pallet_type: palletType,
+      pallet_width_mm: customPallet ? Number(data.get('pallet_width_mm')) : null,
+      pallet_length_mm: customPallet ? Number(data.get('pallet_length_mm')) : null,
       frame_step: Number(data.get('frame_step')),
       max_frames: data.get('max_frames') ? Number(data.get('max_frames')) : (mode === 'live' ? 100 : null),
       max_calibration_error: Number(data.get('max_calibration_error')),
@@ -218,11 +222,15 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
       </div>
       <div className="flex items-center gap-3"><span className="text-sm">{points.length} از ۴ گوشه</span><Button type="button" variant="outline" size="sm" onClick={() => setPoints(current => current.slice(0, -1))} disabled={!points.length}><RotateCcw />حذف آخرین نقطه</Button></div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="space-y-1.5"><Label htmlFor="pallet_type">نوع پالت</Label><select id="pallet_type" name="pallet_type" defaultValue="standard_large" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="standard_large">استاندارد بزرگ (۱۲۰۰×۱۸۰۰)</option><option value="standard_small">استاندارد کوچک (۱۰۰۰×۱۲۰۰)</option><option value="calibration_board">صفحه کالیبراسیون</option></select></div>
+        <div className="space-y-1.5"><Label htmlFor="pallet_type">نوع پالت</Label><select id="pallet_type" name="pallet_type" value={palletType} onChange={event => setPalletType(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="standard_large">استاندارد بزرگ (۱۲۰۰×۱۸۰۰)</option><option value="standard_small">استاندارد کوچک (۱۰۰۰×۱۲۰۰)</option><option value="custom">ابعاد دلخواه</option><option value="calibration_board">صفحه کالیبراسیون</option></select></div>
         <NumberField label="فاصله فریم‌ها" name="frame_step" defaultValue="10" min="1" />
         <NumberField label={mode === 'live' ? 'حداکثر فریم زنده' : 'حداکثر فریم (اختیاری)'} name="max_frames" defaultValue={mode === 'live' ? '100' : undefined} min="1" required={mode === 'live'} />
         <NumberField label="حداکثر خطای کالیبراسیون" name="max_calibration_error" defaultValue="3.0" min="0.1" step="0.1" />
         <NumberField label="حداقل همپوشانی با پالت" name="min_pallet_overlap" defaultValue="0.5" min="0" max="1" step="0.05" />
+        {palletType === 'custom' && <div className="grid gap-4 md:col-span-2 md:grid-cols-2 lg:col-span-4">
+          <NumberField label="عرض پالت (میلی‌متر)" name="pallet_width_mm" min="1" step="0.1" required />
+          <NumberField label="طول پالت (میلی‌متر)" name="pallet_length_mm" min="1" step="0.1" required />
+        </div>}
       </div>
       {(start.error || job.error || cancel.error) && <p className="text-sm text-red-600">{(start.error ?? job.error ?? cancel.error)?.message}</p>}
       {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : currentJob.status === 'cancelled' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'cancelled' ? <span className="flex items-center gap-2"><Ban className="size-4" />پردازش متوقف شد.</span> : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />{currentJob.status === 'cancelling' ? 'در حال توقف پردازش…' : 'مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…'}</span>}</div>}
