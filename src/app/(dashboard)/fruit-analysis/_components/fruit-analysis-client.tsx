@@ -2,7 +2,7 @@
 
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Loader2, Play, RotateCcw, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,7 +35,27 @@ type FruitResult = {
   average_fruit_size_mm: { width: number; length: number; equivalent_diameter: number } | null
   frames: FruitFrame[]
 }
-type FruitJob = { id: string; status: 'queued' | 'running' | 'completed' | 'failed'; error?: string; result?: FruitResult }
+type FruitJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+type FruitLiveEvent = {
+  type: string
+  job_id: string
+  timestamp: string
+  status: FruitJobStatus
+  frame_index: number | null
+  timestamp_ms: number | null
+  progress: number | null
+  elapsed_seconds: number
+  metrics: Record<string, unknown>
+  preview_reference: string | null
+  message: string | null
+}
+type FruitJob = {
+  id: string
+  status: FruitJobStatus
+  error?: string
+  result?: FruitResult
+  live?: FruitLiveEvent
+}
 
 async function appJson<T>(path: string): Promise<T> {
   const response = await fetch(path)
@@ -118,6 +138,7 @@ export function FruitAnalysisClient() {
   }
 
   const currentJob = job.data?.data
+  const { live, connected } = useFruitJobLive(jobId, currentJob)
   const result = currentJob?.result
   const selectedCalibration = latestByCamera.get(cameraId)
 
@@ -170,11 +191,104 @@ export function FruitAnalysisClient() {
       </div>
       {(start.error || job.error) && <p className="text-sm text-red-600">{(start.error ?? job.error)?.message}</p>}
       {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…</span>}</div>}
+      {currentJob && ['queued', 'running'].includes(currentJob.status) && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} />}
       <Button type="submit" disabled={points.length !== 4 || start.isPending || ['queued', 'running'].includes(currentJob?.status ?? '')}><Play />شروع تحلیل میوه</Button>
     </form>}
 
     {result && <ResultView result={result} />}
   </div>
+}
+
+function useFruitJobLive(jobId: string | null, job: FruitJob | undefined) {
+  const queryClient = useQueryClient()
+  const [live, setLive] = useState<FruitLiveEvent | null>(job?.live ?? null)
+  const [connected, setConnected] = useState(false)
+  const polledLive = job?.live
+  const jobStatus = job?.status
+
+  useEffect(() => {
+    setLive(null)
+    setConnected(false)
+  }, [jobId])
+
+  useEffect(() => {
+    if (!polledLive) return
+    setLive(previous => ({
+      ...polledLive,
+      metrics: { ...(previous?.metrics ?? {}), ...polledLive.metrics },
+      preview_reference: polledLive.preview_reference ?? previous?.preview_reference ?? null,
+    }))
+  }, [polledLive])
+
+  useEffect(() => {
+    if (!jobId || !jobStatus || !['queued', 'running'].includes(jobStatus)) return
+    const source = new EventSource(`${FRUIT_API_BASE}/api/v1/jobs/${jobId}/events`)
+    const receive = (raw: Event) => {
+      try {
+        const next = JSON.parse((raw as MessageEvent<string>).data) as FruitLiveEvent
+        setLive(previous => ({
+          ...next,
+          metrics: { ...(previous?.metrics ?? {}), ...next.metrics },
+          preview_reference: next.preview_reference ?? previous?.preview_reference ?? null,
+        }))
+        if (['job_completed', 'job_failed'].includes(next.type)) {
+          source.close()
+          queryClient.invalidateQueries({ queryKey: ['fruit-job', jobId] })
+        }
+      } catch {}
+    }
+    for (const type of ['job_started', 'preview_updated', 'job_completed', 'job_failed']) {
+      source.addEventListener(type, receive)
+    }
+    source.onopen = () => setConnected(true)
+    source.onerror = () => setConnected(false)
+    return () => source.close()
+  }, [jobId, jobStatus, queryClient])
+
+  return { live, connected }
+}
+
+function LivePreviewPanel({ jobId, live, connected }: { jobId: string; live: FruitLiveEvent; connected: boolean }) {
+  const processed = numericMetric(live.metrics.processed_frame_count)
+  const total = numericMetric(live.metrics.total_sampled_frames)
+  const currentFruits = numericMetric(live.metrics.num_fruits)
+  const measuredFruits = numericMetric(live.metrics.num_measured_fruits)
+  const cumulative = numericMetric(live.metrics.total_fruit_observations)
+
+  return <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-4">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p className="text-sm font-semibold text-sky-950">پیش‌نمایش زنده پردازش</p>
+        <p className="mt-1 text-xs text-sky-800">هر فریم بلافاصله پس از تشخیص و اندازه‌گیری نمایش داده می‌شود.</p>
+      </div>
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+        {connected ? 'اتصال زنده' : 'بروزرسانی پشتیبان'}
+      </span>
+    </div>
+    {typeof live.progress === 'number' && <div className="space-y-1">
+      <div className="h-2 overflow-hidden rounded-full bg-sky-100"><div className="h-full bg-sky-600 transition-all" style={{ width: `${live.progress}%` }} /></div>
+      <p className="text-xs text-muted-foreground" dir="ltr">{live.progress.toFixed(1)}%{processed !== null ? ` · ${processed}${total !== null ? ` / ${total}` : ''} frames` : ''}</p>
+    </div>}
+    {live.preview_reference && <div className="flex justify-center overflow-hidden rounded-lg border bg-black">
+      {/* A persistent MJPEG request keeps the last processed frame visible between updates. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`${FRUIT_API_BASE}/api/v1/jobs/${jobId}/preview-stream`} alt="پیش‌نمایش زنده تحلیل میوه" className="block h-auto max-h-[min(70vh,45rem)] max-w-full object-contain" />
+    </div>}
+    {(currentFruits !== null || cumulative !== null) && <div className="grid gap-2 text-xs sm:grid-cols-3">
+      <LiveMetric label="میوه در فریم فعلی" value={currentFruits} />
+      <LiveMetric label="اندازه‌گیری‌شده در فریم" value={measuredFruits} />
+      <LiveMetric label="مجموع مشاهدات تا اینجا" value={cumulative} />
+    </div>}
+  </section>
+}
+
+function numericMetric(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function LiveMetric({ label, value }: { label: string; value: number | null }) {
+  return <div className="rounded-md border bg-background/80 p-3"><p className="text-muted-foreground">{label}</p><p className="mt-1 text-base font-bold">{value === null ? '—' : value.toLocaleString('fa-IR')}</p></div>
 }
 
 function NumberField({ label, name, ...props }: { label: string; name: string } & React.ComponentProps<typeof Input>) {
