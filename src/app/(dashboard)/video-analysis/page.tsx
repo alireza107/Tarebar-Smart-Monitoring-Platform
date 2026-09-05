@@ -1,29 +1,29 @@
 import Link from 'next/link'
-import { Apple, ArrowLeft, RadioTower, UsersRound } from 'lucide-react'
+import { Apple, ArrowLeft, ScanSearch, UsersRound } from 'lucide-react'
 
 const analysisOptions = [
   {
-    href: '/live-analytics/people',
+    href: '/analytics',
     title: 'مانیتورینگ افراد',
-    description: 'شناسایی، ردیابی، شمارش و تحلیل تردد افراد را روی دوربین زنده اجرا کنید.',
+    description: 'ویدیوی ضبط‌شده را برای شناسایی، ردیابی و بررسی تردد افراد تحلیل کنید.',
     icon: UsersRound,
   },
   {
-    href: '/live-analytics/fruit',
+    href: '/fruit-analysis',
     title: 'تحلیل میوه',
-    description: 'دوربین کالیبره‌شده را انتخاب و تعداد و اندازه میوه‌ها را از استریم زنده پردازش کنید.',
+    description: 'با استفاده از دوربین کالیبره‌شده، تعداد و اندازه میوه‌های روی پالت را بررسی کنید.',
     icon: Apple,
   },
 ]
 
-export default function LiveAnalyticsPage() {
+export default function VideoAnalysisPage() {
   return <div className="space-y-5">
     <div>
       <div className="flex items-center gap-2">
-        <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><RadioTower className="size-5" /></span>
-        <h2 className="text-lg font-semibold">تحلیل زنده دوربین‌ها</h2>
+        <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><ScanSearch className="size-5" /></span>
+        <h2 className="text-lg font-semibold">تحلیل ویدیو</h2>
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">نوع تحلیل زنده‌ای را که می‌خواهید روی دوربین‌ها اجرا کنید، انتخاب کنید.</p>
+      <p className="mt-2 text-sm text-muted-foreground">نوع تحلیلی را که می‌خواهید اجرا و آزمایش کنید، انتخاب کنید.</p>
     </div>
     <div className="grid gap-4 sm:grid-cols-2">
       {analysisOptions.map(({ href, title, description, icon: Icon }) => <Link key={href} href={href} className="group flex min-h-40 items-start gap-4 rounded-xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">

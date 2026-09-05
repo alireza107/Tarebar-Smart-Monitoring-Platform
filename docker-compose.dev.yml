@@ -1,10 +1,11 @@
-# Local development stack. Builds frontend and video-analytics from source.
+# Local development stack. Builds frontend, people analytics, and fruit analytics from source.
 # Developers do not need GHCR access.
 #
 # Expected sibling layout:
 #   parent/
 #     Tarebar-Smart-Monitoring-Platform/   ← this repository
 #     video_analytics/                     ← AI repository
+#     fruit-pipeline/                      ← fruit calibration/analysis repository
 #
 #   docker compose -f docker-compose.dev.yml up
 #
@@ -47,11 +48,13 @@ services:
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL: ${NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_FRUIT_PIPELINE_API_URL: ${NEXT_PUBLIC_FRUIT_PIPELINE_API_URL:-http://localhost:8010}
       NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL: ${NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL:-http://localhost:8889}
       NEXT_PUBLIC_MEDIAMTX_HLS_URL: ${NEXT_PUBLIC_MEDIAMTX_HLS_URL:-http://localhost:8888}
       MEDIAMTX_RTSP_URL: ${MEDIAMTX_INTERNAL_RTSP_URL:-rtsp://mediamtx:8554}
       MEDIAMTX_API_URL: ${MEDIAMTX_INTERNAL_API_URL:-http://mediamtx:9997}
       VIDEO_ANALYTICS_API_URL: ${VIDEO_ANALYTICS_INTERNAL_API_URL:-http://video-analytics:8000}
+      FRUIT_PIPELINE_API_URL: ${FRUIT_PIPELINE_INTERNAL_API_URL:-http://fruit-pipeline:8010}
       ANALYTICS_READ_KEY: ${ANALYTICS_READ_KEY:-local-read-key-change-me}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
@@ -65,6 +68,8 @@ services:
       mediamtx:
         condition: service_started
       video-analytics:
+        condition: service_started
+      fruit-pipeline:
         condition: service_started
 
   mediamtx:
@@ -140,9 +145,29 @@ services:
       mediamtx:
         condition: service_started
 
+  fruit-pipeline:
+    build:
+      context: ${FRUIT_PIPELINE_CONTEXT:-../fruit-pipeline}
+    image: fruit-pipeline:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${FRUIT_PIPELINE_PORT:-8010}:8010"
+    environment:
+      FRUIT_PIPELINE_CORS_ORIGINS: ${FRUIT_PIPELINE_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      FRUIT_PIPELINE_JOB_WORKERS: ${FRUIT_PIPELINE_JOB_WORKERS:-1}
+      FRUIT_PIPELINE_MAX_UPLOAD_BYTES: ${FRUIT_PIPELINE_MAX_UPLOAD_BYTES:-1073741824}
+      FRUIT_PIPELINE_DEVICE: ${FRUIT_PIPELINE_DEVICE:-cpu}
+      FRUIT_PIPELINE_DETECTOR_WEIGHTS: /models/yolo11x.pt
+      FRUIT_PIPELINE_SAM_CHECKPOINT: /models/sam_vit_l_0b3195.pth
+    volumes:
+      - fruit-pipeline-data:/app/output/dashboard
+      - ${FRUIT_PIPELINE_MODELS_DIR:-../fruit-pipeline/models}:/models:ro
+
 volumes:
   pgdata:
   analytics-jobs:
   analytics-outbox:
+  fruit-pipeline-data:
   frontend_node_modules:
   frontend_next:

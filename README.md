@@ -131,6 +131,7 @@ frontend release (`NEXT_PUBLIC_*` values are baked in at image build time):
 |---|---|
 | `NEXT_PUBLIC_APP_URL` | Public base URL of the app |
 | `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL` | Public video-analytics API URL |
+| `FRUIT_PIPELINE_API_URL` | Server-side fruit-pipeline API URL used for protected live-camera setup |
 | `NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL` | Public MediaMTX WebRTC URL |
 | `NEXT_PUBLIC_MEDIAMTX_HLS_URL` | Public MediaMTX HLS URL |
 
