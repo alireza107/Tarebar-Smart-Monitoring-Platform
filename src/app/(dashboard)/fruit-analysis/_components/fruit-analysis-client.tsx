@@ -72,6 +72,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
   const [points, setPoints] = useState<Point[]>([])
   const [jobId, setJobId] = useState<string | null>(null)
   const [palletType, setPalletType] = useState('standard_large')
+  const [inferenceMode, setInferenceMode] = useState<'sam_only' | 'detector'>('sam_only')
 
   const cameras = useQuery<{ data: Camera[] }>({ queryKey: ['cameras'], queryFn: () => appJson('/api/cameras') })
   const calibrations = useQuery<{ data: Calibration[] }>({ queryKey: ['camera-calibrations'], queryFn: () => appJson('/api/camera-calibrations') })
@@ -162,6 +163,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
       pallet_type: palletType,
       pallet_width_mm: customPallet ? Number(data.get('pallet_width_mm')) : null,
       pallet_length_mm: customPallet ? Number(data.get('pallet_length_mm')) : null,
+      inference_mode: inferenceMode,
       frame_step: Number(data.get('frame_step')),
       max_frames: data.get('max_frames') ? Number(data.get('max_frames')) : (mode === 'live' ? 100 : null),
       max_calibration_error: Number(data.get('max_calibration_error')),
@@ -223,6 +225,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
       <div className="flex items-center gap-3"><span className="text-sm">{points.length} از ۴ گوشه</span><Button type="button" variant="outline" size="sm" onClick={() => setPoints(current => current.slice(0, -1))} disabled={!points.length}><RotateCcw />حذف آخرین نقطه</Button></div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5"><Label htmlFor="pallet_type">نوع پالت</Label><select id="pallet_type" name="pallet_type" value={palletType} onChange={event => setPalletType(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="standard_large">استاندارد بزرگ (۱۲۰۰×۱۸۰۰)</option><option value="standard_small">استاندارد کوچک (۱۰۰۰×۱۲۰۰)</option><option value="custom">ابعاد دلخواه</option><option value="calibration_board">صفحه کالیبراسیون</option></select></div>
+        <div className="space-y-1.5"><Label htmlFor="inference_mode">روش تشخیص</Label><select id="inference_mode" name="inference_mode" value={inferenceMode} onChange={event => setInferenceMode(event.target.value as 'sam_only' | 'detector')} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="sam_only">فقط SAM (پیش‌فرض، بدون مدل تشخیص)</option><option value="detector">تشخیص‌گر + SAM (روش قبلی)</option></select></div>
         <NumberField label="فاصله فریم‌ها" name="frame_step" defaultValue="10" min="1" />
         <NumberField label={mode === 'live' ? 'حداکثر فریم زنده' : 'حداکثر فریم (اختیاری)'} name="max_frames" defaultValue={mode === 'live' ? '100' : undefined} min="1" required={mode === 'live'} />
         <NumberField label="حداکثر خطای کالیبراسیون" name="max_calibration_error" defaultValue="3.0" min="0.1" step="0.1" />
