@@ -106,6 +106,7 @@ function calibrationErrorMessage(error: string | null | undefined): string {
 export function CameraCalibrationClient() {
   const queryClient = useQueryClient()
   const formRef = useRef<HTMLFormElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const persistedJob = useRef<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [cameraId, setCameraId] = useState('')
@@ -263,6 +264,12 @@ export function CameraCalibrationClient() {
   const currentJob = job.data?.data
   const busy = recording || start.isPending || ['queued', 'capturing', 'running'].includes(currentJob?.status ?? '')
 
+  function selectUploadSource(event: React.MouseEvent<HTMLLabelElement>) {
+    event.preventDefault()
+    setSourceMode('upload')
+    fileInputRef.current?.click()
+  }
+
   return <div className="space-y-6">
     <div>
       <h1 className="text-xl font-bold">کالیبراسیون دوربین</h1>
@@ -273,7 +280,7 @@ export function CameraCalibrationClient() {
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">روش دریافت کالیبراسیون</legend>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${sourceMode === 'upload' ? 'border-primary bg-primary/5' : ''}`}>
+          <label onClick={selectUploadSource} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${sourceMode === 'upload' ? 'border-primary bg-primary/5' : ''}`}>
             <input type="radio" name="source_mode" value="upload" checked={sourceMode === 'upload'} onChange={() => setSourceMode('upload')} className="mt-1" />
             <span><span className="flex items-center gap-2 text-sm font-medium"><Upload className="size-4" />بارگذاری فایل</span><span className="mt-1 block text-xs text-muted-foreground">تصاویر یا ویدیوی از قبل ضبط‌شده</span></span>
           </label>
@@ -306,11 +313,12 @@ export function CameraCalibrationClient() {
         <Field label="حداکثر خطای بازفرافکنی (px)" name="max_reprojection_error" type="number" defaultValue="2.5" min="0.1" step="0.1" />
         <Field label="فاصله نمونه‌برداری فریم" name="frame_step" type="number" defaultValue="10" min="1" />
         <Field label="حداقل فریم معتبر" name="min_frames" type="number" defaultValue="8" min="3" />
-        {sourceMode === 'upload' ? <div className="space-y-1.5 md:col-span-2 lg:col-span-3">
+        <div className={`${sourceMode === 'upload' ? 'space-y-1.5 md:col-span-2 lg:col-span-3' : 'hidden'}`}>
           <Label htmlFor="files">تصاویر یا ویدیوی کالیبراسیون</Label>
-          <Input id="files" name="files" type="file" accept="image/*,video/*,.mov,.mkv,.avi" multiple required />
+          <Input ref={fileInputRef} id="files" name="files" type="file" accept="image/*,video/*,.mov,.mkv,.avi" multiple required={sourceMode === 'upload'} />
           <p className="text-xs text-muted-foreground">برای تصاویر چند فایل انتخاب کنید؛ برای ویدیو فریم‌ها به‌صورت خودکار نمونه‌برداری می‌شوند.</p>
-        </div> : <>
+        </div>
+        {sourceMode === 'live' && <>
           <Field label="مدت ضبط (ثانیه)" name="capture_seconds" type="number" defaultValue="30" min="5" max="120" />
           <div className="space-y-2 md:col-span-2 lg:col-span-3">
             <Label>پیش‌نمایش زنده</Label>
