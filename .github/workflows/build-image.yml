@@ -46,6 +46,8 @@ jobs:
             echo "VERSION_LABEL=feat-docker-cicd-redesign" >> "$GITHUB_ENV"
           elif [ "${GITHUB_REF}" = "refs/heads/dashboard-fruit-integration" ]; then
             echo "VERSION_LABEL=dashboard-fruit-integration" >> "$GITHUB_ENV"
+          elif [ "${GITHUB_REF}" = "refs/heads/feat-sam2" ]; then
+            echo "VERSION_LABEL=feat-sam2" >> "$GITHUB_ENV"
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "VERSION_LABEL=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           else
@@ -60,8 +62,9 @@ jobs:
           tags: |
             type=raw,value=feat-docker-cicd-redesign,enable=${{ github.ref == 'refs/heads/feat/docker-cicd-redesign' }}
             type=raw,value=dashboard-fruit-integration,enable=${{ github.ref == 'refs/heads/dashboard-fruit-integration' }}
-            type=raw,value=${{ github.sha }},enable=${{ github.ref != 'refs/heads/feat/docker-cicd-redesign' && github.ref != 'refs/heads/dashboard-fruit-integration' }}
-            type=sha,format=short,prefix=sha-,enable=${{ github.ref != 'refs/heads/feat/docker-cicd-redesign' && github.ref != 'refs/heads/dashboard-fruit-integration' }}
+            type=raw,value=feat-sam2,enable=${{ github.ref == 'refs/heads/feat-sam2' }}
+            type=raw,value=${{ github.sha }},enable=${{ github.ref != 'refs/heads/feat/docker-cicd-redesign' && github.ref != 'refs/heads/dashboard-fruit-integration' && github.ref != 'refs/heads/feat-sam2' }}
+            type=sha,format=short,prefix=sha-,enable=${{ github.ref != 'refs/heads/feat/docker-cicd-redesign' && github.ref != 'refs/heads/dashboard-fruit-integration' && github.ref != 'refs/heads/feat-sam2' }}
             type=ref,event=tag
             type=semver,pattern={{raw}}
 
