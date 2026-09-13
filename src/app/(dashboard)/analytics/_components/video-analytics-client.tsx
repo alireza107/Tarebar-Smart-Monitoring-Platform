@@ -889,6 +889,7 @@ function JobCard({
           ) : (
             <DynamicMetrics schema={job.application.metric_schema} live={live} history={history} phase="live" />
           )}
+          <Sam2PerformancePanel live={live} />
         </div>
       )}
 
@@ -906,6 +907,7 @@ function JobCard({
           ) : (
             <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
           )}
+          <Sam2PerformancePanel live={live ?? job.live} />
 
           <div className="flex flex-wrap gap-2">
             {Object.entries(job.artifacts)
@@ -979,6 +981,77 @@ function appendHistory(previous: Record<string, number[]>, metrics: Record<strin
     if (typeof value === 'number' && Number.isFinite(value)) next[key] = [...(next[key] ?? []), value].slice(-60)
   })
   return next
+}
+
+function Sam2PerformancePanel({ live }: { live: LiveEvent | null }) {
+  if (!live || live.metrics.sam2_discovery_runs === undefined) return null
+  const metrics = live.metrics
+  const value = (key: string) => metrics[key] === undefined || metrics[key] === null
+    ? '-'
+    : formatDisplayValue(metrics[key])
+  return (
+    <section className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">SAM2 Performance</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Video propagation and discovery diagnostics</p>
+        </div>
+        <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800">live</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Sam2MetricGroup title="Frames" values={[
+          ['Processed', value('processed_frames')],
+          ['Sampled', value('sampled_frames')],
+          ['Source', value('total_source_frames')],
+          ['Skipped', value('skipped_frames')],
+          ['Current frame', value('current_frame_index')],
+          ['Progress', `${value('processing_progress_percent')}%`],
+        ]} />
+        <Sam2MetricGroup title="Inference" values={[
+          ['Discovery runs', value('sam2_discovery_runs')],
+          ['Propagation runs', value('sam2_propagation_runs')],
+          ['Periodic refreshes', value('sam2_periodic_refreshes')],
+          ['Tracking failure refreshes', value('sam2_tracking_failure_refreshes')],
+          ['Low confidence refreshes', value('sam2_low_confidence_refreshes')],
+        ]} />
+        <Sam2MetricGroup title="Timing" values={[
+          ['Discovery avg', `${value('sam2_discovery_avg_ms')} ms`],
+          ['Discovery latest', `${value('sam2_discovery_latest_ms')} ms`],
+          ['Propagation avg', `${value('sam2_propagation_avg_ms')} ms`],
+          ['Propagation latest', `${value('sam2_propagation_latest_ms')} ms`],
+          ['Frame avg', `${value('sam2_frame_avg_ms')} ms`],
+          ['Estimated FPS', value('sam2_estimated_fps')],
+        ]} />
+        <Sam2MetricGroup title="Tracking" values={[
+          ['Objects', value('sam2_tracked_object_count')],
+          ['Mean confidence', value('sam2_average_tracking_confidence')],
+          ['Consecutive failures', value('sam2_consecutive_failures')],
+          ['Failure threshold', value('sam2_refresh_failure_threshold')],
+        ]} />
+        <Sam2MetricGroup title="Refresh diagnostics" values={[
+          ['Current reason', value('sam2_current_refresh_reason')],
+          ['Last refresh frame', value('sam2_last_refresh_frame_index')],
+          ['Last refresh timestamp', value('sam2_last_refresh_timestamp')],
+        ]} />
+      </div>
+    </section>
+  )
+}
+
+function Sam2MetricGroup({ title, values }: { title: string; values: [string, string][] }) {
+  return (
+    <div className="rounded-lg border border-amber-200/70 bg-background/70 p-3">
+      <h4 className="text-xs font-semibold text-amber-900">{title}</h4>
+      <dl className="mt-2 space-y-1.5 text-xs" dir="ltr">
+        {values.map(([label, item]) => (
+          <div key={label} className="flex items-start justify-between gap-3">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="text-right font-medium">{item}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
 }
 
 const IMPORTANT_LIVE_METRICS: Record<LiveTaskId, MetricDefinition[]> = {
