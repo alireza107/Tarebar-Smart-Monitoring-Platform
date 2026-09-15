@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Apple, ArrowLeft, ScanSearch, UsersRound } from 'lucide-react'
+import { Apple, ArrowLeft, BrainCircuit, ScanSearch, UsersRound } from 'lucide-react'
 
 const analysisOptions = [
   {
@@ -14,6 +14,12 @@ const analysisOptions = [
     description: 'با استفاده از دوربین کالیبره‌شده، تعداد و اندازه میوه‌های روی پالت را بررسی کنید.',
     icon: Apple,
   },
+  {
+    href: '/video-insight',
+    title: 'درک ویدیو',
+    description: 'ویدیو را پیوسته پخش کنید و با یک پرسش متنی، توضیح مدل را از توالی فریم‌ها بگیرید.',
+    icon: BrainCircuit,
+  },
 ]
 
 export default function VideoAnalysisPage() {
@@ -25,7 +31,7 @@ export default function VideoAnalysisPage() {
       </div>
       <p className="mt-2 text-sm text-muted-foreground">نوع تحلیلی را که می‌خواهید اجرا و آزمایش کنید، انتخاب کنید.</p>
     </div>
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {analysisOptions.map(({ href, title, description, icon: Icon }) => <Link key={href} href={href} className="group flex min-h-40 items-start gap-4 rounded-xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="size-6" /></span>
         <span className="flex min-w-0 flex-1 flex-col self-stretch">

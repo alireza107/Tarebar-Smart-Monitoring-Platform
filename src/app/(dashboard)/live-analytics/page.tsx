@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Apple, ArrowLeft, RadioTower, UsersRound } from 'lucide-react'
+import { Apple, ArrowLeft, BrainCircuit, RadioTower, UsersRound } from 'lucide-react'
 
 const analysisOptions = [
   {
@@ -14,6 +14,12 @@ const analysisOptions = [
     description: 'دوربین کالیبره‌شده را انتخاب و تعداد و اندازه میوه‌ها را از استریم زنده پردازش کنید.',
     icon: Apple,
   },
+  {
+    href: '/live-analytics/video-insight',
+    title: 'درک زنده ویدیو',
+    description: 'استریم دوربین را پیوسته ببینید و درباره توالی فریم‌های تازه از مدل سؤال کنید.',
+    icon: BrainCircuit,
+  },
 ]
 
 export default function LiveAnalyticsPage() {
@@ -25,7 +31,7 @@ export default function LiveAnalyticsPage() {
       </div>
       <p className="mt-2 text-sm text-muted-foreground">نوع تحلیل زنده‌ای را که می‌خواهید روی دوربین‌ها اجرا کنید، انتخاب کنید.</p>
     </div>
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {analysisOptions.map(({ href, title, description, icon: Icon }) => <Link key={href} href={href} className="group flex min-h-40 items-start gap-4 rounded-xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="size-6" /></span>
         <span className="flex min-w-0 flex-1 flex-col self-stretch">
