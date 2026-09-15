@@ -13,8 +13,13 @@ import { videoAnalyticsApiJson } from '@/lib/video-analytics-api'
 
 type InsightResult = {
   text: string
+  english_text: string
+  translated_query: string
+  detailed: boolean
   frame_count: number
   inference_seconds: number
+  translation_seconds: number
+  total_seconds: number
   model: string
 }
 
@@ -33,6 +38,8 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [query, setQuery] = useState('در این بخش از ویدیو چه اتفاقی می‌افتد؟')
   const [cameraId, setCameraId] = useState('')
+  const [maxTokens, setMaxTokens] = useState('80')
+  const [detailed, setDetailed] = useState(false)
   const [result, setResult] = useState<InsightResult | null>(null)
   const cameras = useQuery<{ data: Camera[] }>({
     queryKey: ['cameras'],
@@ -56,20 +63,25 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
 
   const inference = useMutation({
     mutationFn: async () => {
+      const requestedMaxTokens = Number(maxTokens)
+      if (!Number.isInteger(requestedMaxTokens) || requestedMaxTokens < 16 || requestedMaxTokens > 512) {
+        throw new Error('تعداد توکن خروجی باید عددی بین ۱۶ و ۵۱۲ باشد')
+      }
       if (mode === 'recorded') {
         if (!file) throw new Error('ابتدا یک فایل ویدیویی انتخاب کنید')
         const data = new FormData()
         data.set('video', file)
         data.set('query', query)
         data.set('num_frames', '8')
-        data.set('max_new_tokens', '160')
+        data.set('max_new_tokens', String(requestedMaxTokens))
+        data.set('detailed', String(detailed))
         return videoAnalyticsApiJson<{ data: InsightResult }>('/api/v1/video-insights', { method: 'POST', body: data })
       }
       if (!cameraId) throw new Error('ابتدا یک دوربین زنده انتخاب کنید')
       return appJson<{ data: InsightResult }>(`/api/cameras/${cameraId}/video-insight`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, numFrames: 8, maxNewTokens: 160 }),
+        body: JSON.stringify({ query, numFrames: 8, maxNewTokens: requestedMaxTokens, detailed }),
       })
     },
     onSuccess: response => setResult(response.data),
@@ -121,7 +133,19 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
         <textarea id="insight-query" value={query} onChange={event => setQuery(event.target.value)} required maxLength={4000} rows={3} className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="مثلاً افراد در این توالی چه کاری انجام می‌دهند؟" />
       </div>
 
-      <Button type="submit" disabled={!query.trim() || inference.isPending || (mode === 'recorded' ? !file : !cameraId)}>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="insight-max-tokens">حداکثر تعداد توکن خروجی</Label>
+          <Input id="insight-max-tokens" type="number" inputMode="numeric" min={16} max={512} step={16} value={maxTokens} onChange={event => setMaxTokens(event.target.value)} />
+          <p className="text-xs text-muted-foreground">مقدار بیشتر پاسخ طولانی‌تر و زمان پردازش بیشتری ایجاد می‌کند. مقدار پیش‌فرض ۸۰ است.</p>
+        </div>
+        <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition ${detailed ? 'border-primary bg-primary/5' : 'bg-muted/20'}`}>
+          <input type="checkbox" checked={detailed} onChange={event => setDetailed(event.target.checked)} className="mt-1 size-4 accent-primary" />
+          <span><span className="block text-sm font-semibold">تحلیل با جزئیات</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">در حالت عادی پاسخ کلی است. با فعال‌سازی، مدل رویدادها، افراد، اشیا، تغییرات زمانی و موارد نامطمئن را با جزئیات بررسی می‌کند.</span></span>
+        </label>
+      </div>
+
+      <Button type="submit" disabled={!query.trim() || inference.isPending || Number(maxTokens) < 16 || Number(maxTokens) > 512 || !Number.isInteger(Number(maxTokens)) || (mode === 'recorded' ? !file : !cameraId)}>
         {inference.isPending ? <Loader2 className="animate-spin" /> : <BrainCircuit />}
         {inference.isPending ? 'مدل در حال بررسی فریم‌هاست…' : 'دریافت پاسخ مدل'}
       </Button>
@@ -131,7 +155,13 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
         <div id="insight-output" role="status" aria-live="polite" className="min-h-32 whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm leading-7">
           {inference.isPending ? 'در حال نمونه‌برداری و تحلیل توالی ویدیو…' : result?.text ?? 'پاسخ مدل اینجا نمایش داده می‌شود.'}
         </div>
-        {result && <p className="text-xs text-muted-foreground" dir="ltr">{result.model} · {result.frame_count} frames · {result.inference_seconds.toFixed(2)}s</p>}
+        {result && <>
+          <p className="text-xs text-muted-foreground" dir="ltr">{result.model} · {result.frame_count} frames · vision {result.inference_seconds.toFixed(2)}s · translation {result.translation_seconds.toFixed(2)}s · total {result.total_seconds.toFixed(2)}s</p>
+          <details className="rounded-lg border bg-background p-3 text-sm">
+            <summary className="cursor-pointer font-medium">نمایش پاسخ اصلی انگلیسی</summary>
+            <p className="mt-3 whitespace-pre-wrap leading-7" dir="ltr">{result.english_text}</p>
+          </details>
+        </>}
         {inference.error && <p className="text-sm text-red-600">{inference.error.message}</p>}
       </div>
     </form>

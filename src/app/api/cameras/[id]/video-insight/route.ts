@@ -15,7 +15,8 @@ export const maxDuration = 300
 const requestSchema = z.object({
   query: z.string().trim().min(1).max(4000),
   numFrames: z.number().int().min(2).max(16).default(8),
-  maxNewTokens: z.number().int().min(16).max(512).default(160),
+  maxNewTokens: z.number().int().min(16).max(512).default(80),
+  detailed: z.boolean().default(false),
 })
 
 type Params = { params: Promise<{ id: string }> }
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         query: parsed.data.query,
         num_frames: parsed.data.numFrames,
         max_new_tokens: parsed.data.maxNewTokens,
+        detailed: parsed.data.detailed,
       }),
       cache: 'no-store',
     })
