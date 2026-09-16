@@ -47,7 +47,7 @@ function answerClass(kind: 'fighting' | 'floor', answer: YesNo) {
 }
 
 function EventTable({ kind, logs }: { kind: 'fighting' | 'floor'; logs: InsightLog[] }) {
-  const title = kind === 'fighting' ? 'Are there persons fighting in the video?' : 'Is the floor of the scene clean?'
+  const title = kind === 'fighting' ? 'درگیری فیزیکی' : 'نظافت'
   return <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
     <div className="border-b px-4 py-3">
       <h2 className="font-semibold" dir="ltr">{title}</h2>
