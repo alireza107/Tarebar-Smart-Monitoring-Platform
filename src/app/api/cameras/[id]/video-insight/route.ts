@@ -13,10 +13,8 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 
 const requestSchema = z.object({
-  query: z.string().trim().min(1).max(4000),
   numFrames: z.number().int().min(2).max(16).default(8),
-  maxNewTokens: z.number().int().min(16).max(512).default(80),
-  detailed: z.boolean().default(false),
+  intervalSeconds: z.number().min(10).max(60).default(10),
 })
 
 type Params = { params: Promise<{ id: string }> }
@@ -43,10 +41,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         stream_url: deriveAnalyticsRtspUrl(camera.streamUrl),
-        query: parsed.data.query,
         num_frames: parsed.data.numFrames,
-        max_new_tokens: parsed.data.maxNewTokens,
-        detailed: parsed.data.detailed,
+        interval_seconds: parsed.data.intervalSeconds,
       }),
       cache: 'no-store',
     })
