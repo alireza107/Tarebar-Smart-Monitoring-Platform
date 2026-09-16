@@ -490,10 +490,9 @@ function QualityResultView({ result }: { result: FruitQualityResult }) {
       <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">گزارش کیفیت میوه</h2></div>
       <span className={`rounded-full border px-3 py-1 text-sm font-bold ${tone}`}>{result.label}</span>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-3">
       <Metric label="امتیاز تازگی" value={`${result.freshness_score.toLocaleString('fa-IR')} از ۱۰۰`} />
       <Metric label="اطمینان مدل" value={`${result.confidence.toLocaleString('fa-IR')} درصد`} />
-      <Metric label="تعداد تخمینی میوه" value={result.fruit_count_estimate === null ? '—' : result.fruit_count_estimate.toLocaleString('fa-IR')} />
       <Metric label="فریم‌های بررسی‌شده" value={result.frame_count.toLocaleString('fa-IR')} />
     </div>
     <div className="space-y-2">
@@ -504,8 +503,6 @@ function QualityResultView({ result }: { result: FruitQualityResult }) {
       </div>
       <div className="grid grid-cols-3 gap-2 text-center text-xs"><span className="text-emerald-700">تازه: {result.distribution.fresh.toLocaleString('fa-IR')}٪</span><span className="text-amber-700">متوسط: {result.distribution.middle.toLocaleString('fa-IR')}٪</span><span className="text-red-700">فاسد: {result.distribution.rotten.toLocaleString('fa-IR')}٪</span></div>
     </div>
-    <p className="rounded-lg border bg-muted/30 p-4 text-sm leading-7">{result.summary_fa}</p>
-    <p className="text-xs text-muted-foreground">زمان استنباط Qwen: {result.inference_seconds.toLocaleString('fa-IR', { maximumFractionDigits: 2 })} ثانیه. این ارزیابی فقط بر پایه شواهد ظاهری است.</p>
   </section>
 }
 
