@@ -318,6 +318,7 @@ function LivePreviewPanel({ jobId, live, connected, intervalMode }: { jobId: str
   const measuredFruits = numericMetric(live.metrics.num_measured_fruits)
   const cumulative = numericMetric(live.metrics.total_fruit_observations)
   const averageSize = sizeMetric(live.metrics.average_fruit_size_mm)
+  const fruits = fruitsMetric(live.metrics.fruits)
 
   return <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -349,11 +350,42 @@ function LivePreviewPanel({ jobId, live, connected, intervalMode }: { jobId: str
       <LiveMetric label="میانگین طول" value={averageSize.length} suffix="mm" />
       <LiveMetric label="میانگین قطر معادل" value={averageSize.equivalent_diameter} suffix="mm" />
     </div>}
+    {fruits.length > 0 && <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-sky-950">میوه‌های آخرین اجرای SAM ({fruits.length.toLocaleString('fa-IR')})</p>
+      <div className="max-h-64 overflow-auto rounded-lg border bg-background/80">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-muted/60"><tr className="border-b text-right text-muted-foreground"><th className="p-2">شناسه</th><th className="p-2">عرض</th><th className="p-2">طول</th><th className="p-2">قطر معادل</th></tr></thead>
+          <tbody>{fruits.map(fruit => <tr key={fruit.fruit_id} className="border-b last:border-0">
+            <td className="p-2">#{fruit.fruit_id}</td>
+            <td className="p-2" dir="ltr">{fruit.width_mm.toFixed(1)} mm</td>
+            <td className="p-2" dir="ltr">{fruit.length_mm.toFixed(1)} mm</td>
+            <td className="p-2" dir="ltr">{fruit.equivalent_diameter_mm.toFixed(1)} mm</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>}
   </section>
 }
 
 function numericMetric(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+type LiveFruit = { fruit_id: number; width_mm: number; length_mm: number; equivalent_diameter_mm: number }
+
+function fruitsMetric(value: unknown): LiveFruit[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return []
+    const item = entry as Record<string, unknown>
+    const fruitId = numericMetric(item.fruit_id)
+    const widthMm = numericMetric(item.width_mm)
+    const lengthMm = numericMetric(item.length_mm)
+    const equivalentDiameterMm = numericMetric(item.equivalent_diameter_mm)
+    return fruitId === null || widthMm === null || lengthMm === null || equivalentDiameterMm === null
+      ? []
+      : [{ fruit_id: fruitId, width_mm: widthMm, length_mm: lengthMm, equivalent_diameter_mm: equivalentDiameterMm }]
+  })
 }
 
 function sizeMetric(value: unknown): { width: number; length: number; equivalent_diameter: number } | null {
