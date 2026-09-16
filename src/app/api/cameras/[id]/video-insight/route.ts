@@ -49,12 +49,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     const result: unknown = await response.json().catch(() => null)
     if (!response.ok) {
       logger.warn({ cameraId: camera.id, status: response.status, result }, 'live video insight rejected')
-      return NextResponse.json({ error: 'سرویس درک ویدیو درخواست را نپذیرفت', detail: result }, { status: response.status })
+      return NextResponse.json({ error: 'سرویس تشخیص حادثه درخواست را نپذیرفت', detail: result }, { status: response.status })
     }
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof PermissionError || error instanceof ScopeError) return forbidden()
-    logger.error({ err: error }, 'failed to interpret live camera video')
-    return serverError('درک استریم زنده ممکن نشد')
+    logger.error({ err: error }, 'failed to detect live camera incidents')
+    return serverError('تشخیص حادثه در استریم زنده ممکن نشد')
   }
 }

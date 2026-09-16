@@ -12,7 +12,7 @@ export async function videoAnalyticsApiJson<T>(path: string, init?: RequestInit)
   const body = await response.json().catch(() => null)
   if (!response.ok) {
     const detail = body?.detail?.detail ?? body?.detail ?? body?.error
-    throw new Error(typeof detail === 'string' ? detail : 'خطا در سرویس درک ویدیو')
+    throw new Error(typeof detail === 'string' ? detail : 'خطا در سرویس تشخیص حادثه')
   }
   return body as T
 }

@@ -16,8 +16,8 @@ const analysisOptions = [
   },
   {
     href: '/live-analytics/video-insight',
-    title: 'درک زنده ویدیو',
-    description: 'استریم دوربین را پیوسته ببینید و درباره توالی فریم‌های تازه از مدل سؤال کنید.',
+    title: 'تشخیص حادثه',
+    description: 'استریم دوربین را در بازه‌های زمانی انتخابی برای تشخیص درگیری و پاکیزگی صحنه بررسی کنید.',
     icon: BrainCircuit,
   },
 ]

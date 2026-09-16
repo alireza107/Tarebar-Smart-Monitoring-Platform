@@ -38,7 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/monitoring', label: 'مانیتورینگ', roles: ALL_ROLES, hidden: true },
   { href: '/analytics', label: 'مانیتورینگ افراد', roles: ALL_ROLES, hidden: true },
   { href: '/fruit-analysis', label: 'تحلیل میوه', roles: ALL_ROLES, hidden: true },
-  { href: '/video-insight', label: 'درک ویدیو', roles: ALL_ROLES, hidden: true },
+  { href: '/video-insight', label: 'تشخیص حادثه', roles: ALL_ROLES, hidden: true },
 ]
 
 export function canAccessRoute(role: Role, pathname: string): boolean {

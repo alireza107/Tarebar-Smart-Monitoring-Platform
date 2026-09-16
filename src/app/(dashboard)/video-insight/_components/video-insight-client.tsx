@@ -15,7 +15,6 @@ import { videoAnalyticsApiJson } from '@/lib/video-analytics-api'
 type YesNo = 'Yes' | 'No'
 type InsightResult = {
   answers: { fighting: YesNo; floor_clean: YesNo }
-  frame_count: number
   inference_seconds: number
 }
 type InsightLog = InsightResult & { id: number; checkedAt: Date; window: string }
@@ -56,16 +55,15 @@ function EventTable({ kind, logs }: { kind: 'fighting' | 'floor'; logs: InsightL
     </div>
     <Table>
       <TableHeader><TableRow>
-        <TableHead>زمان بررسی</TableHead><TableHead>بازه ویدیو</TableHead><TableHead>فریم‌ها</TableHead><TableHead>پاسخ</TableHead><TableHead>رویداد</TableHead>
+        <TableHead>زمان بررسی</TableHead><TableHead>بازه ویدیو</TableHead><TableHead>پاسخ</TableHead><TableHead>رویداد</TableHead>
       </TableRow></TableHeader>
       <TableBody>
-        {logs.length === 0 && <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">هنوز رویدادی ثبت نشده است.</TableCell></TableRow>}
+        {logs.length === 0 && <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">هنوز رویدادی ثبت نشده است.</TableCell></TableRow>}
         {logs.map(log => {
           const answer = kind === 'fighting' ? log.answers.fighting : log.answers.floor_clean
           return <TableRow key={`${kind}-${log.id}`}>
             <TableCell className="whitespace-nowrap">{log.checkedAt.toLocaleTimeString('fa-IR')}</TableCell>
             <TableCell className="whitespace-nowrap" dir="ltr">{log.window}</TableCell>
-            <TableCell>{log.frame_count}</TableCell>
             <TableCell><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${answerClass(kind, answer)}`}>{answer}</span></TableCell>
             <TableCell>{answerEvent(kind, answer)}</TableCell>
           </TableRow>
@@ -197,8 +195,7 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
 
   return <div className="space-y-5">
     <div>
-      <div className="flex items-center gap-2"><BrainCircuit className="size-6 text-primary" /><h1 className="text-xl font-bold">{mode === 'live' ? 'پایش زنده ویدیو' : 'پایش ویدیو'}</h1></div>
-      <p className="mt-1 text-sm text-muted-foreground">دو وضعیت ثابت در بازه‌های زمانی انتخابی بررسی می‌شوند؛ خروجی مدل نمایش داده نمی‌شود و فقط رویدادهای Yes/No ثبت می‌شوند.</p>
+      <div className="flex items-center gap-2"><BrainCircuit className="size-6 text-primary" /><h1 className="text-xl font-bold">تشخیص حادثه</h1></div>
     </div>
 
     <div className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
