@@ -3,11 +3,12 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CheckCircle2, Loader2, Play, Radio, RotateCcw, Upload } from 'lucide-react'
+import { Apple, Ban, BrainCircuit, CheckCircle2, Loader2, Play, Radio, RotateCcw, Ruler, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FRUIT_API_BASE, fruitApiJson, fruitArtifactUrl } from '@/lib/fruit-api'
+import { videoAnalyticsApiJson } from '@/lib/video-analytics-api'
 import type { Camera } from '@/modules/camera/types'
 
 type Calibration = {
@@ -56,9 +57,20 @@ type FruitJob = {
   result?: FruitResult
   live?: FruitLiveEvent
 }
+type FruitQualityResult = {
+  has_fruit: boolean
+  label: 'تازه' | 'تقریباً تازه' | 'متوسط' | 'تقریباً فاسد' | 'فاسد' | 'نامشخص'
+  freshness_score: number
+  distribution: { fresh: number; middle: number; rotten: number }
+  fruit_count_estimate: number | null
+  confidence: number
+  summary_fa: string
+  frame_count: number
+  inference_seconds: number
+}
 
-async function appJson<T>(path: string): Promise<T> {
-  const response = await fetch(path)
+async function appJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init)
   if (!response.ok) throw new Error('خطا در دریافت اطلاعات سامانه')
   return response.json()
 }
@@ -74,6 +86,12 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
   const [palletType, setPalletType] = useState('standard_large')
   const [inferenceMode, setInferenceMode] = useState<'sam_only' | 'detector'>('sam_only')
   const [inferenceIntervalMinutes, setInferenceIntervalMinutes] = useState(10)
+  const [analysisKind, setAnalysisKind] = useState<'quality' | 'measurement'>('quality')
+  const [qualityFile, setQualityFile] = useState<File | null>(null)
+  const [qualityPreviewUrl, setQualityPreviewUrl] = useState<string | null>(null)
+  const [qualityCameraId, setQualityCameraId] = useState('')
+  const [qualityReport, setQualityReport] = useState<FruitQualityResult | null>(null)
+  const [measurementReport, setMeasurementReport] = useState<FruitResult | null>(null)
 
   const cameras = useQuery<{ data: Camera[] }>({ queryKey: ['cameras'], queryFn: () => appJson('/api/cameras') })
   const calibrations = useQuery<{ data: Calibration[] }>({ queryKey: ['camera-calibrations'], queryFn: () => appJson('/api/camera-calibrations') })
@@ -88,9 +106,16 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
     ),
     [cameras.data, latestByCamera, mode],
   )
+  const liveCameras = useMemo(() => (cameras.data?.data ?? []).filter(camera => Boolean(camera.streamUrl)), [cameras.data])
   useEffect(() => {
     if (!cameraId && calibratedCameras[0]) setCameraId(calibratedCameras[0].id)
   }, [calibratedCameras, cameraId])
+  useEffect(() => {
+    if (mode === 'live' && !qualityCameraId && liveCameras[0]) setQualityCameraId(liveCameras[0].id)
+  }, [liveCameras, mode, qualityCameraId])
+  useEffect(() => () => {
+    if (qualityPreviewUrl) URL.revokeObjectURL(qualityPreviewUrl)
+  }, [qualityPreviewUrl])
 
   const upload = useMutation({
     mutationFn: (formData: FormData) => fruitApiJson<{ data: InputPreview }>('/api/v1/inputs', { method: 'POST', body: formData }),
@@ -128,12 +153,34 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
     mutationFn: () => fruitApiJson<{ data: FruitJob }>(`/api/v1/jobs/${jobId}/cancel`, { method: 'POST' }),
     onSuccess: response => queryClient.setQueryData(['fruit-job', jobId], response),
   })
+  const quality = useMutation({
+    mutationFn: async () => {
+      if (mode === 'recorded') {
+        if (!qualityFile) throw new Error('ابتدا یک تصویر یا ویدیوی میوه انتخاب کنید')
+        const data = new FormData()
+        data.set('media', qualityFile)
+        data.set('num_frames', '8')
+        return videoAnalyticsApiJson<{ data: FruitQualityResult }>('/api/v1/fruit-quality', { method: 'POST', body: data })
+      }
+      if (!qualityCameraId) throw new Error('ابتدا یک دوربین زنده انتخاب کنید')
+      return appJson<{ data: FruitQualityResult }>(`/api/cameras/${qualityCameraId}/fruit-quality`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numFrames: 8, intervalSeconds: 10 }),
+      })
+    },
+    onSuccess: response => setQualityReport(response.data),
+  })
 
   function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     data.set('camera_id', cameraId)
     upload.mutate(data)
+  }
+
+  function chooseQualityFile(file: File | null) {
+    setQualityFile(file)
+    setQualityPreviewUrl(file ? URL.createObjectURL(file) : null)
+    quality.reset()
   }
 
   function prepareLiveFrame(event: FormEvent<HTMLFormElement>) {
@@ -182,19 +229,42 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
   const result = currentJob?.result
   const selectedCalibration = latestByCamera.get(cameraId)
   const jobIsActive = ['queued', 'running', 'cancelling'].includes(currentJob?.status ?? '')
+  useEffect(() => {
+    if (result) setMeasurementReport(result)
+  }, [result])
 
   return <div className="space-y-6">
     <div>
       <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده میوه' : 'تحلیل میوه'}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{legacyDashboard
-        ? (mode === 'live'
-          ? 'دوربین زنده کالیبره‌شده را انتخاب کنید، محدوده پالت را روی فریم زنده مشخص کنید و پردازش را آغاز کنید.'
-          : 'دوربین کالیبره‌شده را انتخاب کنید، محدوده پالت را مشخص کنید و تعداد و اندازه میوه‌ها را ببینید.')
-        : mode === 'live'
-        ? 'دوربین زنده کالیبره‌شده را انتخاب کنید؛ SAM در بازه زمانی انتخابی اجرا می‌شود و ماسک‌ها بدون ردیابی تا اجرای بعدی باقی می‌مانند.'
-        : 'ویدیو را انتخاب کنید؛ شمارش و اندازه‌گیری در بازه زمانی انتخابی به‌روزرسانی و ماسک قبلی بین بازه‌ها حفظ می‌شود.'}</p>
+      <p className="mt-1 text-sm text-muted-foreground">ارزیابی کیفیت ظاهری با Qwen یا شمارش و تخمین اندازه را انتخاب کنید.</p>
     </div>
 
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Button type="button" size="lg" variant={analysisKind === 'quality' ? 'default' : 'outline'} className="h-auto justify-start py-4" onClick={() => setAnalysisKind('quality')}>
+        <BrainCircuit className="size-5" /><span className="text-right"><span className="block font-semibold">کیفیت میوه</span><span className="mt-1 block text-xs font-normal opacity-80">امتیاز تازگی با Qwen</span></span>
+      </Button>
+      <Button type="button" size="lg" variant={analysisKind === 'measurement' ? 'default' : 'outline'} className="h-auto justify-start py-4" onClick={() => setAnalysisKind('measurement')}>
+        <Ruler className="size-5" /><span className="text-right"><span className="block font-semibold">شمارش و تخمین اندازه</span><span className="mt-1 block text-xs font-normal opacity-80">روش قبلی با کالیبراسیون</span></span>
+      </Button>
+    </div>
+
+    {analysisKind === 'quality' && <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+      <div><h2 className="flex items-center gap-2 font-semibold"><Apple className="size-5 text-emerald-600" />ارزیابی کیفیت میوه</h2><p className="mt-1 text-xs text-muted-foreground">مدل فقط نشانه‌های قابل مشاهده را بررسی می‌کند؛ این نتیجه جایگزین آزمایش کیفیت یا ایمنی غذایی نیست.</p></div>
+      {mode === 'recorded' ? <>
+        <div className="space-y-2"><Label htmlFor="fruit-quality-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-quality-file" type="file" accept="image/*,video/*,.mov,.mkv,.avi,.webm,.m4v" onChange={event => chooseQualityFile(event.target.files?.[0] ?? null)} /></div>
+        {qualityPreviewUrl && <div className="flex max-h-[32rem] justify-center overflow-hidden rounded-xl border bg-black">
+          {qualityFile?.type.startsWith('video/')
+            ? <video src={qualityPreviewUrl} controls muted playsInline className="max-h-[32rem] max-w-full object-contain" />
+            // Local object URLs do not use Next image optimization.
+            // eslint-disable-next-line @next/next/no-img-element
+            : <img src={qualityPreviewUrl} alt="پیش‌نمایش میوه" className="max-h-[32rem] max-w-full object-contain" />}
+        </div>}
+      </> : <div className="space-y-2"><Label htmlFor="fruit-quality-camera">دوربین زنده</Label><select id="fruit-quality-camera" value={qualityCameraId} onChange={event => setQualityCameraId(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{liveCameras.map(camera => <option key={camera.id} value={camera.id}>{camera.name}</option>)}</select>{!cameras.isLoading && liveCameras.length === 0 && <p className="text-sm text-amber-700">هیچ دوربین دارای استریمی در دسترس نیست.</p>}</div>}
+      {quality.error && <p className="text-sm text-red-600">{quality.error.message}</p>}
+      <Button type="button" disabled={quality.isPending || (mode === 'recorded' ? !qualityFile : !qualityCameraId)} onClick={() => quality.mutate()}>{quality.isPending ? <Loader2 className="animate-spin" /> : <BrainCircuit />}{quality.isPending ? 'در حال ارزیابی با Qwen…' : 'اجرای ارزیابی کیفیت'}</Button>
+    </section>}
+
+    {analysisKind === 'measurement' && <>
     {!calibrations.isLoading && calibratedCameras.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       {mode === 'live' ? 'برای تحلیل زنده، یک دوربین دارای استریم را ' : 'برای تحلیل اندازه ابتدا باید یک دوربین را '}<Link href="/camera-calibration" className="font-semibold underline">کالیبره کنید</Link>.
     </div>}
@@ -257,8 +327,10 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
         {currentJob && ['queued', 'running'].includes(currentJob.status) && <Button type="button" variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}><Ban />{cancel.isPending ? 'در حال ارسال درخواست توقف…' : 'توقف پردازش'}</Button>}
       </div>
     </form>}
+    </>}
 
-    {result && <ResultView result={result} />}
+    {qualityReport && <QualityResultView result={qualityReport} />}
+    {measurementReport && <ResultView result={measurementReport} />}
   </div>
 }
 
@@ -405,6 +477,36 @@ function LiveMetric({ label, value, suffix }: { label: string; value: number | n
 
 function NumberField({ label, name, ...props }: { label: string; name: string } & React.ComponentProps<typeof Input>) {
   return <div className="space-y-1.5"><Label htmlFor={name}>{label}</Label><Input id={name} name={name} type="number" {...props} /></div>
+}
+
+function QualityResultView({ result }: { result: FruitQualityResult }) {
+  const tone = result.label === 'تازه' || result.label === 'تقریباً تازه'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : result.label === 'فاسد' || result.label === 'تقریباً فاسد'
+      ? 'border-red-200 bg-red-50 text-red-800'
+      : 'border-amber-200 bg-amber-50 text-amber-800'
+  return <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">گزارش کیفیت میوه</h2></div>
+      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${tone}`}>{result.label}</span>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Metric label="امتیاز تازگی" value={`${result.freshness_score.toLocaleString('fa-IR')} از ۱۰۰`} />
+      <Metric label="اطمینان مدل" value={`${result.confidence.toLocaleString('fa-IR')} درصد`} />
+      <Metric label="تعداد تخمینی میوه" value={result.fruit_count_estimate === null ? '—' : result.fruit_count_estimate.toLocaleString('fa-IR')} />
+      <Metric label="فریم‌های بررسی‌شده" value={result.frame_count.toLocaleString('fa-IR')} />
+    </div>
+    <div className="space-y-2">
+      <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-label="توزیع کیفیت میوه‌ها">
+        <div className="bg-emerald-500" style={{ width: `${result.distribution.fresh}%` }} />
+        <div className="bg-amber-400" style={{ width: `${result.distribution.middle}%` }} />
+        <div className="bg-red-500" style={{ width: `${result.distribution.rotten}%` }} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center text-xs"><span className="text-emerald-700">تازه: {result.distribution.fresh.toLocaleString('fa-IR')}٪</span><span className="text-amber-700">متوسط: {result.distribution.middle.toLocaleString('fa-IR')}٪</span><span className="text-red-700">فاسد: {result.distribution.rotten.toLocaleString('fa-IR')}٪</span></div>
+    </div>
+    <p className="rounded-lg border bg-muted/30 p-4 text-sm leading-7">{result.summary_fa}</p>
+    <p className="text-xs text-muted-foreground">زمان استنباط Qwen: {result.inference_seconds.toLocaleString('fa-IR', { maximumFractionDigits: 2 })} ثانیه. این ارزیابی فقط بر پایه شواهد ظاهری است.</p>
+  </section>
 }
 
 function ResultView({ result }: { result: FruitResult }) {
