@@ -15,7 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'نمای کلی', roles: ALL_ROLES, group: 'analytics' },
   { href: '/live-operations', label: 'عملیات زنده', roles: ALL_ROLES, group: 'analytics' },
   { href: '/live-analytics', label: 'تحلیل زنده دوربین‌ها', roles: ALL_ROLES, group: 'analytics' },
-  { href: '/video-analysis', label: 'تحلیل ویدیو', roles: ALL_ROLES, group: 'analytics', activePaths: ['/analytics', '/fruit-analysis'] },
+  { href: '/video-analysis', label: 'تحلیل ویدیو', roles: ALL_ROLES, group: 'analytics', activePaths: ['/analytics', '/fruit-analysis', '/video-insight'] },
   { href: '/traffic-density', label: 'تردد و تراکم', roles: ALL_ROLES, group: 'analytics' },
   { href: '/queue-service', label: 'صف و خدمت‌رسانی', roles: ALL_ROLES, group: 'analytics' },
   { href: '/spatial', label: 'نقشه حرارتی و رفتار مکانی', roles: ALL_ROLES, group: 'analytics' },
@@ -38,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/monitoring', label: 'مانیتورینگ', roles: ALL_ROLES, hidden: true },
   { href: '/analytics', label: 'مانیتورینگ افراد', roles: ALL_ROLES, hidden: true },
   { href: '/fruit-analysis', label: 'تحلیل میوه', roles: ALL_ROLES, hidden: true },
+  { href: '/video-insight', label: 'تشخیص حادثه', roles: ALL_ROLES, hidden: true },
 ]
 
 export function canAccessRoute(role: Role, pathname: string): boolean {

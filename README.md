@@ -132,11 +132,19 @@ frontend release (`NEXT_PUBLIC_*` values are baked in at image build time):
 | `NEXT_PUBLIC_APP_URL` | Public base URL of the app |
 | `NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL` | Public video-analytics API URL |
 | `FRUIT_PIPELINE_API_URL` | Server-side fruit-pipeline API URL used for protected live-camera setup |
+| `FRUIT_PIPELINE_LEGACY_DASHBOARD` | Set to `true` to restore the archived frame/tracker-oriented fruit-analysis controls; defaults to the interval SAM dashboard |
 | `NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL` | Public MediaMTX WebRTC URL |
 | `NEXT_PUBLIC_MEDIAMTX_HLS_URL` | Public MediaMTX HLS URL |
 
 Local Docker Compose still uses `.env.dev` and source builds. Required local
 variables are documented in `.env.example`.
+
+The fruit dashboard defaults to tracker-free interval processing: the user
+chooses a SAM refresh interval from 1 to 60 minutes, the latest masks remain
+overlaid between refreshes, and counts/sizes are recorded on each refresh. To
+temporarily restore the previous dashboard and job behavior, set
+`FRUIT_PIPELINE_LEGACY_DASHBOARD=true` and restart the app container. No old
+pipeline code or controls need to be restored from Git.
 
 ---
 

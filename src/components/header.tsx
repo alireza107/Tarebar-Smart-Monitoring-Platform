@@ -8,8 +8,9 @@ import { isNavigationItemActive, useVisibleNavigation } from './sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'نمای کلی', '/live-operations': 'عملیات زنده', '/live-analytics/people': 'مانیتورینگ زنده افراد',
-  '/live-analytics/fruit': 'تحلیل زنده میوه', '/live-analytics': 'تحلیل زنده دوربین‌ها',
-  '/video-analysis': 'تحلیل ویدیو', '/analytics': 'مانیتورینگ افراد', '/fruit-analysis': 'تحلیل میوه',
+  '/live-analytics/fruit': 'تحلیل زنده میوه', '/live-analytics/video-insight': 'تشخیص حادثه',
+  '/live-analytics': 'تحلیل زنده دوربین‌ها',
+  '/video-analysis': 'تحلیل ویدیو', '/analytics': 'مانیتورینگ افراد', '/fruit-analysis': 'تحلیل میوه', '/video-insight': 'تشخیص حادثه',
   '/traffic-density': 'تردد و تراکم',
   '/queue-service': 'صف و خدمت‌رسانی', '/spatial': 'نقشه حرارتی و رفتار مکانی', '/events': 'رویدادها',
   '/compare-locations': 'مقایسه مکان‌ها', '/reports': 'گزارش‌ها', '/locations': 'مدیریت نواحی',

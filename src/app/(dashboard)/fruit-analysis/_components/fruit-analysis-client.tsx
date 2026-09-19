@@ -3,11 +3,12 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CheckCircle2, Loader2, Play, Radio, RotateCcw, Upload } from 'lucide-react'
+import { Apple, Ban, BrainCircuit, CheckCircle2, Loader2, Play, Radio, RotateCcw, Ruler, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FRUIT_API_BASE, fruitApiJson, fruitArtifactUrl } from '@/lib/fruit-api'
+import { videoAnalyticsApiJson } from '@/lib/video-analytics-api'
 import type { Camera } from '@/modules/camera/types'
 
 type Calibration = {
@@ -56,16 +57,27 @@ type FruitJob = {
   result?: FruitResult
   live?: FruitLiveEvent
 }
+type FruitQualityResult = {
+  has_fruit: boolean
+  label: 'تازه' | 'تقریباً تازه' | 'متوسط' | 'تقریباً فاسد' | 'فاسد' | 'نامشخص'
+  freshness_score: number
+  distribution: { fresh: number; middle: number; rotten: number }
+  fruit_count_estimate: number | null
+  confidence: number
+  summary_fa: string
+  frame_count: number
+  inference_seconds: number
+}
 
-async function appJson<T>(path: string): Promise<T> {
-  const response = await fetch(path)
+async function appJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init)
   if (!response.ok) throw new Error('خطا در دریافت اطلاعات سامانه')
   return response.json()
 }
 
 const CORNER_LABELS = ['TL', 'TR', 'BR', 'BL']
 
-export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' | 'live' }) {
+export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false }: { mode?: 'recorded' | 'live'; legacyDashboard?: boolean }) {
   const queryClient = useQueryClient()
   const [cameraId, setCameraId] = useState('')
   const [input, setInput] = useState<InputPreview | null>(null)
@@ -73,6 +85,13 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
   const [jobId, setJobId] = useState<string | null>(null)
   const [palletType, setPalletType] = useState('standard_large')
   const [inferenceMode, setInferenceMode] = useState<'sam_only' | 'detector'>('sam_only')
+  const [inferenceIntervalMinutes, setInferenceIntervalMinutes] = useState(10)
+  const [analysisKind, setAnalysisKind] = useState<'quality' | 'measurement'>('quality')
+  const [qualityFile, setQualityFile] = useState<File | null>(null)
+  const [qualityPreviewUrl, setQualityPreviewUrl] = useState<string | null>(null)
+  const [qualityCameraId, setQualityCameraId] = useState('')
+  const [qualityReport, setQualityReport] = useState<FruitQualityResult | null>(null)
+  const [measurementReport, setMeasurementReport] = useState<FruitResult | null>(null)
 
   const cameras = useQuery<{ data: Camera[] }>({ queryKey: ['cameras'], queryFn: () => appJson('/api/cameras') })
   const calibrations = useQuery<{ data: Calibration[] }>({ queryKey: ['camera-calibrations'], queryFn: () => appJson('/api/camera-calibrations') })
@@ -87,9 +106,16 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
     ),
     [cameras.data, latestByCamera, mode],
   )
+  const liveCameras = useMemo(() => (cameras.data?.data ?? []).filter(camera => Boolean(camera.streamUrl)), [cameras.data])
   useEffect(() => {
     if (!cameraId && calibratedCameras[0]) setCameraId(calibratedCameras[0].id)
   }, [calibratedCameras, cameraId])
+  useEffect(() => {
+    if (mode === 'live' && !qualityCameraId && liveCameras[0]) setQualityCameraId(liveCameras[0].id)
+  }, [liveCameras, mode, qualityCameraId])
+  useEffect(() => () => {
+    if (qualityPreviewUrl) URL.revokeObjectURL(qualityPreviewUrl)
+  }, [qualityPreviewUrl])
 
   const upload = useMutation({
     mutationFn: (formData: FormData) => fruitApiJson<{ data: InputPreview }>('/api/v1/inputs', { method: 'POST', body: formData }),
@@ -127,12 +153,34 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
     mutationFn: () => fruitApiJson<{ data: FruitJob }>(`/api/v1/jobs/${jobId}/cancel`, { method: 'POST' }),
     onSuccess: response => queryClient.setQueryData(['fruit-job', jobId], response),
   })
+  const quality = useMutation({
+    mutationFn: async () => {
+      if (mode === 'recorded') {
+        if (!qualityFile) throw new Error('ابتدا یک تصویر یا ویدیوی میوه انتخاب کنید')
+        const data = new FormData()
+        data.set('media', qualityFile)
+        data.set('num_frames', '8')
+        return videoAnalyticsApiJson<{ data: FruitQualityResult }>('/api/v1/fruit-quality', { method: 'POST', body: data })
+      }
+      if (!qualityCameraId) throw new Error('ابتدا یک دوربین زنده انتخاب کنید')
+      return appJson<{ data: FruitQualityResult }>(`/api/cameras/${qualityCameraId}/fruit-quality`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numFrames: 8, intervalSeconds: 10 }),
+      })
+    },
+    onSuccess: response => setQualityReport(response.data),
+  })
 
   function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     data.set('camera_id', cameraId)
     upload.mutate(data)
+  }
+
+  function chooseQualityFile(file: File | null) {
+    setQualityFile(file)
+    setQualityPreviewUrl(file ? URL.createObjectURL(file) : null)
+    quality.reset()
   }
 
   function prepareLiveFrame(event: FormEvent<HTMLFormElement>) {
@@ -156,6 +204,7 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
     if (!input || points.length !== 4) return
     const data = new FormData(event.currentTarget)
     const customPallet = palletType === 'custom'
+    const legacyMaxFrames = data.get('max_frames')
     start.mutate({
       input_id: input.id,
       camera_id: cameraId,
@@ -163,9 +212,11 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
       pallet_type: palletType,
       pallet_width_mm: customPallet ? Number(data.get('pallet_width_mm')) : null,
       pallet_length_mm: customPallet ? Number(data.get('pallet_length_mm')) : null,
-      inference_mode: inferenceMode,
-      frame_step: Number(data.get('frame_step')),
-      max_frames: data.get('max_frames') ? Number(data.get('max_frames')) : (mode === 'live' ? 100 : null),
+      processing_mode: legacyDashboard ? 'legacy' : 'interval',
+      inference_mode: legacyDashboard ? inferenceMode : 'sam_only',
+      inference_interval_minutes: inferenceIntervalMinutes,
+      frame_step: legacyDashboard ? Number(data.get('frame_step')) : 10,
+      max_frames: legacyDashboard && legacyMaxFrames ? Number(legacyMaxFrames) : null,
       max_calibration_error: Number(data.get('max_calibration_error')),
       min_pallet_overlap: Number(data.get('min_pallet_overlap')),
       resize_to_calibration: true,
@@ -178,15 +229,42 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
   const result = currentJob?.result
   const selectedCalibration = latestByCamera.get(cameraId)
   const jobIsActive = ['queued', 'running', 'cancelling'].includes(currentJob?.status ?? '')
+  useEffect(() => {
+    if (result) setMeasurementReport(result)
+  }, [result])
 
   return <div className="space-y-6">
     <div>
       <h1 className="text-xl font-bold">{mode === 'live' ? 'تحلیل زنده میوه' : 'تحلیل میوه'}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{mode === 'live'
-        ? 'دوربین زنده کالیبره‌شده را انتخاب کنید، محدوده پالت را روی فریم زنده مشخص کنید و پردازش را آغاز کنید.'
-        : 'دوربین کالیبره‌شده را انتخاب کنید، محدوده پالت را مشخص کنید و تعداد و اندازه میوه‌ها را ببینید.'}</p>
+      <p className="mt-1 text-sm text-muted-foreground">ارزیابی کیفیت ظاهری با Qwen یا شمارش و تخمین اندازه را انتخاب کنید.</p>
     </div>
 
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Button type="button" size="lg" variant={analysisKind === 'quality' ? 'default' : 'outline'} className="h-auto justify-start py-4" onClick={() => setAnalysisKind('quality')}>
+        <BrainCircuit className="size-5" /><span className="text-right"><span className="block font-semibold">کیفیت میوه</span><span className="mt-1 block text-xs font-normal opacity-80">امتیاز تازگی با Qwen</span></span>
+      </Button>
+      <Button type="button" size="lg" variant={analysisKind === 'measurement' ? 'default' : 'outline'} className="h-auto justify-start py-4" onClick={() => setAnalysisKind('measurement')}>
+        <Ruler className="size-5" /><span className="text-right"><span className="block font-semibold">شمارش و تخمین اندازه</span><span className="mt-1 block text-xs font-normal opacity-80">روش قبلی با کالیبراسیون</span></span>
+      </Button>
+    </div>
+
+    {analysisKind === 'quality' && <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+      <div><h2 className="flex items-center gap-2 font-semibold"><Apple className="size-5 text-emerald-600" />ارزیابی کیفیت میوه</h2><p className="mt-1 text-xs text-muted-foreground">مدل فقط نشانه‌های قابل مشاهده را بررسی می‌کند؛ این نتیجه جایگزین آزمایش کیفیت یا ایمنی غذایی نیست.</p></div>
+      {mode === 'recorded' ? <>
+        <div className="space-y-2"><Label htmlFor="fruit-quality-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-quality-file" type="file" accept="image/*,video/*,.mov,.mkv,.avi,.webm,.m4v" onChange={event => chooseQualityFile(event.target.files?.[0] ?? null)} /></div>
+        {qualityPreviewUrl && <div className="flex max-h-[32rem] justify-center overflow-hidden rounded-xl border bg-black">
+          {qualityFile?.type.startsWith('video/')
+            ? <video src={qualityPreviewUrl} controls muted playsInline className="max-h-[32rem] max-w-full object-contain" />
+            // Local object URLs do not use Next image optimization.
+            // eslint-disable-next-line @next/next/no-img-element
+            : <img src={qualityPreviewUrl} alt="پیش‌نمایش میوه" className="max-h-[32rem] max-w-full object-contain" />}
+        </div>}
+      </> : <div className="space-y-2"><Label htmlFor="fruit-quality-camera">دوربین زنده</Label><select id="fruit-quality-camera" value={qualityCameraId} onChange={event => setQualityCameraId(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{liveCameras.map(camera => <option key={camera.id} value={camera.id}>{camera.name}</option>)}</select>{!cameras.isLoading && liveCameras.length === 0 && <p className="text-sm text-amber-700">هیچ دوربین دارای استریمی در دسترس نیست.</p>}</div>}
+      {quality.error && <p className="text-sm text-red-600">{quality.error.message}</p>}
+      <Button type="button" disabled={quality.isPending || (mode === 'recorded' ? !qualityFile : !qualityCameraId)} onClick={() => quality.mutate()}>{quality.isPending ? <Loader2 className="animate-spin" /> : <BrainCircuit />}{quality.isPending ? 'در حال ارزیابی با Qwen…' : 'اجرای ارزیابی کیفیت'}</Button>
+    </section>}
+
+    {analysisKind === 'measurement' && <>
     {!calibrations.isLoading && calibratedCameras.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       {mode === 'live' ? 'برای تحلیل زنده، یک دوربین دارای استریم را ' : 'برای تحلیل اندازه ابتدا باید یک دوربین را '}<Link href="/camera-calibration" className="font-semibold underline">کالیبره کنید</Link>.
     </div>}
@@ -225,9 +303,15 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
       <div className="flex items-center gap-3"><span className="text-sm">{points.length} از ۴ گوشه</span><Button type="button" variant="outline" size="sm" onClick={() => setPoints(current => current.slice(0, -1))} disabled={!points.length}><RotateCcw />حذف آخرین نقطه</Button></div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5"><Label htmlFor="pallet_type">نوع پالت</Label><select id="pallet_type" name="pallet_type" value={palletType} onChange={event => setPalletType(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="standard_large">استاندارد بزرگ (۱۲۰۰×۱۸۰۰)</option><option value="standard_small">استاندارد کوچک (۱۰۰۰×۱۲۰۰)</option><option value="custom">ابعاد دلخواه</option><option value="calibration_board">صفحه کالیبراسیون</option></select></div>
-        <div className="space-y-1.5"><Label htmlFor="inference_mode">روش تشخیص</Label><select id="inference_mode" name="inference_mode" value={inferenceMode} onChange={event => setInferenceMode(event.target.value as 'sam_only' | 'detector')} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="sam_only">فقط SAM (پیش‌فرض، بدون مدل تشخیص)</option><option value="detector">تشخیص‌گر + SAM (روش قبلی)</option></select></div>
-        <NumberField label="فاصله فریم‌ها" name="frame_step" defaultValue="10" min="1" />
-        <NumberField label={mode === 'live' ? 'حداکثر فریم زنده' : 'حداکثر فریم (اختیاری)'} name="max_frames" defaultValue={mode === 'live' ? '100' : undefined} min="1" required={mode === 'live'} />
+        {legacyDashboard ? <>
+          <div className="space-y-1.5"><Label htmlFor="inference_mode">روش تشخیص</Label><select id="inference_mode" name="inference_mode" value={inferenceMode} onChange={event => setInferenceMode(event.target.value as 'sam_only' | 'detector')} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="sam_only">فقط SAM (پیش‌فرض، بدون مدل تشخیص)</option><option value="detector">تشخیص‌گر + SAM (روش قبلی)</option></select></div>
+          <NumberField label="فاصله فریم‌ها" name="frame_step" defaultValue="10" min="1" />
+          <NumberField label={mode === 'live' ? 'حداکثر فریم زنده' : 'حداکثر فریم (اختیاری)'} name="max_frames" defaultValue={mode === 'live' ? '100' : undefined} min="1" required={mode === 'live'} />
+        </> : <div className="space-y-1.5 md:col-span-1">
+          <Label htmlFor="inference_interval_minutes">فاصله اجرای SAM (دقیقه)</Label>
+          <Input id="inference_interval_minutes" name="inference_interval_minutes" type="number" min="1" max="60" step="1" required value={inferenceIntervalMinutes} onChange={event => setInferenceIntervalMinutes(Number(event.target.value))} />
+          <p className="text-xs text-muted-foreground">از ۱ دقیقه تا ۱ ساعت؛ بدون ردیابی و با حفظ آخرین ماسک.</p>
+        </div>}
         <NumberField label="حداکثر خطای کالیبراسیون" name="max_calibration_error" defaultValue="3.0" min="0.1" step="0.1" />
         <NumberField label="حداقل همپوشانی با پالت" name="min_pallet_overlap" defaultValue="0.5" min="0" max="1" step="0.05" />
         {palletType === 'custom' && <div className="grid gap-4 md:col-span-2 md:grid-cols-2 lg:col-span-4">
@@ -236,15 +320,17 @@ export function FruitAnalysisClient({ mode = 'recorded' }: { mode?: 'recorded' |
         </div>}
       </div>
       {(start.error || job.error || cancel.error) && <p className="text-sm text-red-600">{(start.error ?? job.error ?? cancel.error)?.message}</p>}
-      {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : currentJob.status === 'cancelled' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'cancelled' ? <span className="flex items-center gap-2"><Ban className="size-4" />پردازش متوقف شد.</span> : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />{currentJob.status === 'cancelling' ? 'در حال توقف پردازش…' : 'مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…'}</span>}</div>}
-      {currentJob && jobIsActive && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} />}
+      {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : currentJob.status === 'cancelled' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'cancelled' ? <span className="flex items-center gap-2"><Ban className="size-4" />پردازش متوقف شد.</span> : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />{currentJob.status === 'cancelling' ? 'در حال توقف پردازش…' : legacyDashboard ? 'مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…' : 'تحلیل دوره‌ای فعال است؛ آخرین ماسک تا اجرای بعدی SAM نمایش داده می‌شود.'}</span>}</div>}
+      {currentJob && jobIsActive && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} intervalMode={!legacyDashboard} />}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={points.length !== 4 || start.isPending || jobIsActive}><Play />{mode === 'live' ? 'شروع تحلیل زنده میوه' : 'شروع تحلیل میوه'}</Button>
         {currentJob && ['queued', 'running'].includes(currentJob.status) && <Button type="button" variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}><Ban />{cancel.isPending ? 'در حال ارسال درخواست توقف…' : 'توقف پردازش'}</Button>}
       </div>
     </form>}
+    </>}
 
-    {result && <ResultView result={result} />}
+    {qualityReport && <QualityResultView result={qualityReport} />}
+    {measurementReport && <ResultView result={measurementReport} />}
   </div>
 }
 
@@ -297,18 +383,20 @@ function useFruitJobLive(jobId: string | null, job: FruitJob | undefined) {
   return { live, connected }
 }
 
-function LivePreviewPanel({ jobId, live, connected }: { jobId: string; live: FruitLiveEvent; connected: boolean }) {
+function LivePreviewPanel({ jobId, live, connected, intervalMode }: { jobId: string; live: FruitLiveEvent; connected: boolean; intervalMode: boolean }) {
   const processed = numericMetric(live.metrics.processed_frame_count)
   const total = numericMetric(live.metrics.total_sampled_frames)
   const currentFruits = numericMetric(live.metrics.num_fruits)
   const measuredFruits = numericMetric(live.metrics.num_measured_fruits)
   const cumulative = numericMetric(live.metrics.total_fruit_observations)
+  const averageSize = sizeMetric(live.metrics.average_fruit_size_mm)
+  const fruits = fruitsMetric(live.metrics.fruits)
 
   return <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <p className="text-sm font-semibold text-sky-950">پیش‌نمایش زنده پردازش</p>
-        <p className="mt-1 text-xs text-sky-800">هر فریم بلافاصله پس از تشخیص و اندازه‌گیری نمایش داده می‌شود.</p>
+        <p className="mt-1 text-xs text-sky-800">{intervalMode ? 'آخرین ماسک روی فریم‌های بعدی باقی می‌ماند؛ شمارش و اندازه در اجرای بعدی SAM به‌روزرسانی می‌شود.' : 'هر فریم بلافاصله پس از تشخیص و اندازه‌گیری نمایش داده می‌شود.'}</p>
       </div>
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -329,6 +417,25 @@ function LivePreviewPanel({ jobId, live, connected }: { jobId: string; live: Fru
       <LiveMetric label="اندازه‌گیری‌شده در فریم" value={measuredFruits} />
       <LiveMetric label="مجموع مشاهدات تا اینجا" value={cumulative} />
     </div>}
+    {averageSize && <div className="grid gap-2 text-xs sm:grid-cols-3">
+      <LiveMetric label="میانگین عرض" value={averageSize.width} suffix="mm" />
+      <LiveMetric label="میانگین طول" value={averageSize.length} suffix="mm" />
+      <LiveMetric label="میانگین قطر معادل" value={averageSize.equivalent_diameter} suffix="mm" />
+    </div>}
+    {fruits.length > 0 && <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-sky-950">میوه‌های آخرین اجرای SAM ({fruits.length.toLocaleString('fa-IR')})</p>
+      <div className="max-h-64 overflow-auto rounded-lg border bg-background/80">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-muted/60"><tr className="border-b text-right text-muted-foreground"><th className="p-2">شناسه</th><th className="p-2">عرض</th><th className="p-2">طول</th><th className="p-2">قطر معادل</th></tr></thead>
+          <tbody>{fruits.map(fruit => <tr key={fruit.fruit_id} className="border-b last:border-0">
+            <td className="p-2">#{fruit.fruit_id}</td>
+            <td className="p-2" dir="ltr">{fruit.width_mm.toFixed(1)} mm</td>
+            <td className="p-2" dir="ltr">{fruit.length_mm.toFixed(1)} mm</td>
+            <td className="p-2" dir="ltr">{fruit.equivalent_diameter_mm.toFixed(1)} mm</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>}
   </section>
 }
 
@@ -336,12 +443,67 @@ function numericMetric(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function LiveMetric({ label, value }: { label: string; value: number | null }) {
-  return <div className="rounded-md border bg-background/80 p-3"><p className="text-muted-foreground">{label}</p><p className="mt-1 text-base font-bold">{value === null ? '—' : value.toLocaleString('fa-IR')}</p></div>
+type LiveFruit = { fruit_id: number; width_mm: number; length_mm: number; equivalent_diameter_mm: number }
+
+function fruitsMetric(value: unknown): LiveFruit[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return []
+    const item = entry as Record<string, unknown>
+    const fruitId = numericMetric(item.fruit_id)
+    const widthMm = numericMetric(item.width_mm)
+    const lengthMm = numericMetric(item.length_mm)
+    const equivalentDiameterMm = numericMetric(item.equivalent_diameter_mm)
+    return fruitId === null || widthMm === null || lengthMm === null || equivalentDiameterMm === null
+      ? []
+      : [{ fruit_id: fruitId, width_mm: widthMm, length_mm: lengthMm, equivalent_diameter_mm: equivalentDiameterMm }]
+  })
+}
+
+function sizeMetric(value: unknown): { width: number; length: number; equivalent_diameter: number } | null {
+  if (!value || typeof value !== 'object') return null
+  const metric = value as Record<string, unknown>
+  const width = numericMetric(metric.width)
+  const length = numericMetric(metric.length)
+  const equivalentDiameter = numericMetric(metric.equivalent_diameter)
+  return width === null || length === null || equivalentDiameter === null
+    ? null
+    : { width, length, equivalent_diameter: equivalentDiameter }
+}
+
+function LiveMetric({ label, value, suffix }: { label: string; value: number | null; suffix?: string }) {
+  return <div className="rounded-md border bg-background/80 p-3"><p className="text-muted-foreground">{label}</p><p className="mt-1 text-base font-bold" dir="auto">{value === null ? '—' : `${value.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}${suffix ? ` ${suffix}` : ''}`}</p></div>
 }
 
 function NumberField({ label, name, ...props }: { label: string; name: string } & React.ComponentProps<typeof Input>) {
   return <div className="space-y-1.5"><Label htmlFor={name}>{label}</Label><Input id={name} name={name} type="number" {...props} /></div>
+}
+
+function QualityResultView({ result }: { result: FruitQualityResult }) {
+  const tone = result.label === 'تازه' || result.label === 'تقریباً تازه'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : result.label === 'فاسد' || result.label === 'تقریباً فاسد'
+      ? 'border-red-200 bg-red-50 text-red-800'
+      : 'border-amber-200 bg-amber-50 text-amber-800'
+  return <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">گزارش کیفیت میوه</h2></div>
+      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${tone}`}>{result.label}</span>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Metric label="امتیاز تازگی" value={`${result.freshness_score.toLocaleString('fa-IR')} از ۱۰۰`} />
+      <Metric label="اطمینان مدل" value={`${result.confidence.toLocaleString('fa-IR')} درصد`} />
+      <Metric label="فریم‌های بررسی‌شده" value={result.frame_count.toLocaleString('fa-IR')} />
+    </div>
+    <div className="space-y-2">
+      <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-label="توزیع کیفیت میوه‌ها">
+        <div className="bg-emerald-500" style={{ width: `${result.distribution.fresh}%` }} />
+        <div className="bg-amber-400" style={{ width: `${result.distribution.middle}%` }} />
+        <div className="bg-red-500" style={{ width: `${result.distribution.rotten}%` }} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center text-xs"><span className="text-emerald-700">تازه: {result.distribution.fresh.toLocaleString('fa-IR')}٪</span><span className="text-amber-700">متوسط: {result.distribution.middle.toLocaleString('fa-IR')}٪</span><span className="text-red-700">فاسد: {result.distribution.rotten.toLocaleString('fa-IR')}٪</span></div>
+    </div>
+  </section>
 }
 
 function ResultView({ result }: { result: FruitResult }) {
