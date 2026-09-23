@@ -6,7 +6,7 @@ import { businessDate } from '@/lib/dates'
 import { checkPermission, PermissionError, type Role } from '@/lib/permissions'
 import { canQueryLocation, parseRecordQuery } from '@/modules/analysis-records/http'
 import { analysisRecordService } from '@/modules/analysis-records/service'
-import type { QualityDetails } from '@/modules/analysis-records/types'
+import { SEVERITY_LABELS_FA, type QualityDetails } from '@/modules/analysis-records/types'
 
 export const runtime = 'nodejs'
 const EXPORT_LIMIT = 5000
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     const csv = toCsv(
-      ['شناسه', 'زمان ثبت', 'منبع', 'دوربین', 'میدان', 'بازار', 'غرفه', 'فایل', 'میوه دیده شد', 'برچسب کیفیت', 'درجه', 'امتیاز تازگی', 'اطمینان مدل', 'درصد تازه', 'درصد متوسط', 'درصد فاسد', 'برآورد تعداد', 'انواع میوه', 'عیوب مشاهده‌شده', 'ماندگاری برآوردی (روز)', 'نتیجه ارزیابی', 'توضیح مدل', 'توصیه', 'تعداد فریم', 'زمان استنتاج (ثانیه)', 'ثبت‌کننده'],
+      ['شناسه', 'زمان ثبت', 'منبع', 'دوربین', 'میدان', 'بازار', 'غرفه', 'فایل', 'میوه دیده شد', 'برچسب کیفیت', 'درجه', 'امتیاز تازگی', 'اطمینان مدل', 'درصد تازه', 'درصد متوسط', 'درصد فاسد', 'عیوب مشاهده‌شده', 'پروفایل کیفیت', 'نتیجه ارزیابی', 'توصیه', 'تعداد فریم', 'زمان استنتاج (ثانیه)', 'ثبت‌کننده'],
       rows.map(row => {
         const details = row.details as unknown as QualityDetails | null
         return [
@@ -59,12 +59,9 @@ export async function GET(request: NextRequest) {
           row.freshPercent,
           row.middlePercent,
           row.rottenPercent,
-          row.fruitCountEstimate,
-          (details?.fruitTypes ?? []).map(item => item.name_fa).join('، '),
-          (details?.defects ?? []).map(item => `${item.label_fa} (${item.severity})`).join('، '),
-          details?.shelfLifeDaysEstimate ?? '',
+          (details?.defects ?? []).map(item => `${item.label_fa} (${SEVERITY_LABELS_FA[item.severity]}${item.extent_label_fa ? `، ${item.extent_label_fa}` : ''})`).join('، '),
+          (details?.qualityProfile ?? []).map(item => `${item.label_fa}: ${item.value_fa}`).join('، '),
           details?.verdictFa ?? '',
-          row.summaryFa,
           row.recommendationFa ?? '',
           row.frameCount,
           row.inferenceSeconds,

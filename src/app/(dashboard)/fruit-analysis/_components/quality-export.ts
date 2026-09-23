@@ -4,6 +4,7 @@ import {
   gradeForScore,
   SEVERITY_LABELS_FA,
   type FruitQualityResult,
+  shareBandFa,
 } from '@/modules/analysis-records/types'
 
 export interface QualityExportContext {
@@ -43,31 +44,30 @@ export function exportQualityCsv(result: FruitQualityResult, context: QualityExp
     ['درجه', grade ? `${grade} (${GRADE_LABELS_FA[grade]})` : ''],
     ['امتیاز تازگی (۰ تا ۱۰۰)', result.freshness_score],
     ['اطمینان مدل (٪)', result.confidence],
-    ['سهم تازه (٪)', result.distribution.fresh],
-    ['سهم متوسط (٪)', result.distribution.middle],
-    ['سهم فاسد (٪)', result.distribution.rotten],
-    ['برآورد تعداد میوه', result.fruit_count_estimate],
-    ['ماندگاری برآوردی (روز)', result.shelf_life_days_estimate ?? null],
-    ['انواع میوه', (result.fruit_types ?? []).map(item => `${item.name_fa}${item.share_percent === null ? '' : ` ${item.share_percent}٪`}`).join('، ')],
+    ['محصول تازه', shareBandFa(result.distribution.fresh)],
+    ['نشانه‌های کهنگی', shareBandFa(result.distribution.middle)],
+    ['فساد قابل‌مشاهده', shareBandFa(result.distribution.rotten)],
     ['نتیجه ارزیابی', result.verdict_fa ?? ''],
-    ['توضیح مدل', result.summary_fa],
     ['توصیه', result.recommendation_fa ?? ''],
-    ['توصیه نگهداری', result.storage_advice_fa ?? ''],
     ['تعداد فریم بررسی‌شده', result.frame_count],
     ['زمان استنتاج (ثانیه)', result.inference_seconds],
     ['مدل', result.model ?? ''],
   ]
+  if (result.quality_profile?.length) {
+    rows.push([], ['شاخص کیفیت', 'وضعیت', 'توضیح'])
+    for (const aspect of result.quality_profile) rows.push([aspect.label_fa, aspect.value_fa, aspect.note_fa ?? ''])
+  }
   if (result.defects?.length) {
-    rows.push([], ['عیب', 'شدت', 'سهم درگیر (٪)', 'توضیح'])
+    rows.push([], ['عیب', 'شدت', 'گستردگی'])
     for (const defect of result.defects) {
-      rows.push([defect.label_fa, SEVERITY_LABELS_FA[defect.severity], defect.affected_percent, defect.note_fa ?? ''])
+      rows.push([defect.label_fa, SEVERITY_LABELS_FA[defect.severity], defect.extent_label_fa ?? ''])
     }
   }
   const frames = (result.frames ?? []).filter(frame => frame.freshness_score !== null || frame.error)
   if (frames.length) {
-    rows.push([], ['فریم', 'زمان (ثانیه)', 'امتیاز تازگی', 'برچسب', 'توضیح', 'خطا'])
+    rows.push([], ['فریم', 'زمان (ثانیه)', 'امتیاز تازگی', 'برچسب', 'خطا'])
     for (const frame of frames) {
-      rows.push([frame.index + 1, frame.timestamp_seconds, frame.freshness_score, frame.label ?? '', frame.note_fa ?? '', frame.error ?? ''])
+      rows.push([frame.index + 1, frame.timestamp_seconds, frame.freshness_score, frame.label ?? '', frame.error ?? ''])
     }
   }
   downloadCsv(`fruit-quality-${fileStamp(context.analyzedAt)}.csv`, ['شاخص', 'مقدار'], rows)

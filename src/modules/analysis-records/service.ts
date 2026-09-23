@@ -53,6 +53,7 @@ function splitQualityResult(result: FruitQualityResultInput): {
       defects: result.defects ?? [],
       shelfLifeDaysEstimate: result.shelf_life_days_estimate ?? null,
       storageAdviceFa: result.storage_advice_fa ?? null,
+      qualityProfile: result.quality_profile ?? [],
       frameStatistics: result.frame_statistics ?? null,
       frames: frames.map(frame => ({
         index: frame.index,

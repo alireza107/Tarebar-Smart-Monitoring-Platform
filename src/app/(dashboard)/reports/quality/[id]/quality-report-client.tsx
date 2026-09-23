@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, FileJson } from 'lucide-react'
 import { faDate, faNumber, MiniBars, PrintButton, ReportSection, ReportSheet, ReportStat } from '@/components/report/report-primitives'
 import { downloadJson, fileStamp } from '@/lib/download'
-import { GRADE_LABELS_FA, SEVERITY_LABELS_FA, type QualityAssessmentRecord, type QualityGrade } from '@/modules/analysis-records/types'
+import { GRADE_LABELS_FA, SEVERITY_LABELS_FA, shareBandFa, type QualityAssessmentRecord, type QualityGrade } from '@/modules/analysis-records/types'
 import { boothLabel } from '@/lib/persian'
 
 async function fetchAssessment(id: string): Promise<QualityAssessmentRecord> {
@@ -14,6 +14,8 @@ async function fetchAssessment(id: string): Promise<QualityAssessmentRecord> {
   if (!response.ok) throw new Error('دریافت گزارش ممکن نشد.')
   return ((await response.json()) as { data: QualityAssessmentRecord }).data
 }
+
+const ASPECT_TONE = { good: 'border-emerald-200 bg-emerald-50', watch: 'border-amber-200 bg-amber-50', poor: 'border-red-200 bg-red-50' } as const
 
 function tone(score: number): 'good' | 'watch' | 'poor' {
   return score >= 80 ? 'good' : score >= 60 ? 'watch' : 'poor'
@@ -61,33 +63,28 @@ export function QualityReportClient({ id }: { id: string }) {
           <ReportStat label="برچسب کیفیت" value={data.label} hint={grade ? GRADE_LABELS_FA[grade] : undefined} tone={data.hasFruit ? tone(data.freshnessScore) : 'neutral'} />
           <ReportStat label="امتیاز تازگی" value={`${faNumber(data.freshnessScore)} از ۱۰۰`} tone={data.hasFruit ? tone(data.freshnessScore) : 'neutral'} />
           <ReportStat label="اطمینان مدل" value={`${faNumber(data.confidence)}٪`} />
-          <ReportStat label="برآورد تعداد میوه" value={data.fruitCountEstimate === null ? '—' : faNumber(data.fruitCountEstimate)} />
+          <ReportStat label="فریم‌های بررسی‌شده" value={faNumber(data.frameCount)} />
         </div>
         <div className="space-y-1.5">
           <div className="flex h-4 overflow-hidden rounded-full bg-slate-100"><div className="bg-emerald-500" style={{ width: `${data.freshPercent}%` }} /><div className="bg-amber-400" style={{ width: `${data.middlePercent}%` }} /><div className="bg-red-500" style={{ width: `${data.rottenPercent}%` }} /></div>
-          <div className="grid grid-cols-3 text-center text-xs"><span className="text-emerald-700">تازه {faNumber(data.freshPercent)}٪</span><span className="text-amber-700">متوسط {faNumber(data.middlePercent)}٪</span><span className="text-red-700">فاسد {faNumber(data.rottenPercent)}٪</span></div>
+          <div className="grid grid-cols-3 text-center text-xs"><span className="text-emerald-700">تازه: {shareBandFa(data.freshPercent)}</span><span className="text-amber-700">نشانه‌های کهنگی: {shareBandFa(data.middlePercent)}</span><span className="text-red-700">فساد: {shareBandFa(data.rottenPercent)}</span></div>
         </div>
-        <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-7">
-          {details.verdictFa && <p className="font-medium">{details.verdictFa}</p>}
-          {data.summaryFa !== details.verdictFa && <p className="text-slate-600">{data.summaryFa}</p>}
-        </div>
+        {details.verdictFa && <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-7">{details.verdictFa}</p>}
       </ReportSection>
 
-      {(data.recommendationFa || details.storageAdviceFa || details.shelfLifeDaysEstimate !== null) && <ReportSection title="توصیه‌ها">
-        <div className="grid gap-3 sm:grid-cols-3 print:grid-cols-3">
-          {details.shelfLifeDaysEstimate !== null && <ReportStat label="ماندگاری برآوردی" value={`${faNumber(details.shelfLifeDaysEstimate)} روز`} />}
-          {data.recommendationFa && <div className="rounded-lg border border-slate-200 p-3 sm:col-span-2"><p className="text-[11px] text-slate-500">اقدام پیشنهادی</p><p className="mt-1 text-sm leading-7">{data.recommendationFa}</p></div>}
-          {details.storageAdviceFa && <div className="rounded-lg border border-slate-200 p-3 sm:col-span-3"><p className="text-[11px] text-slate-500">نگهداری</p><p className="mt-1 text-sm leading-7">{details.storageAdviceFa}</p></div>}
+      {!!details.qualityProfile?.length && <ReportSection title="پروفایل کیفیت" description="وضعیت بار در شاخص‌های قابل مشاهده؛ برآمده از نتیجه اعتبارسنجی‌شده">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3">
+          {details.qualityProfile.map(aspect => <div key={aspect.key} className={`rounded-lg border p-3 ${ASPECT_TONE[aspect.status]}`}><p className="text-[11px] text-slate-500">{aspect.label_fa}</p><p className="mt-1 text-sm font-bold text-slate-900">{aspect.value_fa}</p>{aspect.note_fa && <p className="mt-1 text-[11px] leading-5 text-slate-600">{aspect.note_fa}</p>}</div>)}
         </div>
       </ReportSection>}
 
-      {details.fruitTypes.length > 0 && <ReportSection title="انواع میوه مشاهده‌شده">
-        <div className="flex flex-wrap gap-2">{details.fruitTypes.map(item => <span key={item.name_fa} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm">{item.name_fa}{item.share_percent !== null && <span className="mr-1 text-slate-500">{faNumber(item.share_percent)}٪</span>}</span>)}</div>
+      {data.recommendationFa && <ReportSection title="توصیه">
+        <div className="rounded-lg border border-slate-200 p-3"><p className="text-[11px] text-slate-500">اقدام پیشنهادی (بر پایه درجه کیفیت)</p><p className="mt-1 text-sm leading-7">{data.recommendationFa}</p></div>
       </ReportSection>}
 
       {details.defects.length > 0 && <ReportSection title="عیوب مشاهده‌شده">
-        <table className="w-full text-sm"><thead><tr className="border-b border-slate-200 text-right text-xs text-slate-500"><th className="p-2">عیب</th><th className="p-2">شدت</th><th className="p-2">سهم درگیر</th><th className="p-2">توضیح</th></tr></thead>
-          <tbody>{details.defects.map((defect, index) => <tr key={`${defect.type}-${index}`} className="border-b border-slate-100 last:border-0"><td className="p-2 font-medium">{defect.label_fa}</td><td className="p-2">{SEVERITY_LABELS_FA[defect.severity]}</td><td className="p-2">{defect.affected_percent === null ? '—' : `${faNumber(defect.affected_percent)}٪`}</td><td className="p-2 text-slate-600">{defect.note_fa || '—'}</td></tr>)}</tbody>
+        <table className="w-full text-sm"><thead><tr className="border-b border-slate-200 text-right text-xs text-slate-500"><th className="p-2">عیب</th><th className="p-2">شدت</th><th className="p-2">گستردگی</th></tr></thead>
+          <tbody>{details.defects.map((defect, index) => <tr key={`${defect.type}-${index}`} className="border-b border-slate-100 last:border-0"><td className="p-2 font-medium">{defect.label_fa}</td><td className="p-2">{SEVERITY_LABELS_FA[defect.severity]}</td><td className="p-2">{defect.extent_label_fa ?? '—'}</td></tr>)}</tbody>
         </table>
       </ReportSection>}
 
@@ -97,7 +94,7 @@ export function QualityReportClient({ id }: { id: string }) {
           {/* Evidence thumbnails are inline data URLs stored with the assessment. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {thumbnails.has(frame.index) && <img src={thumbnails.get(frame.index)} alt={`فریم ${frame.index + 1}`} className="aspect-video w-full bg-black object-contain" />}
-          <figcaption className="space-y-0.5 p-2 text-[11px]"><div className="flex justify-between"><span>فریم {faNumber(frame.index + 1)}{frame.timestamp_seconds != null && <span className="mr-1 text-slate-500" dir="ltr">{frame.timestamp_seconds.toFixed(1)}s</span>}</span>{frame.freshness_score !== null && <b>{faNumber(frame.freshness_score)}</b>}</div>{frame.label && <p className="text-slate-600">{frame.label}</p>}{frame.note_fa && <p className="leading-5 text-slate-500">{frame.note_fa}</p>}</figcaption>
+          <figcaption className="space-y-0.5 p-2 text-[11px]"><div className="flex justify-between"><span>فریم {faNumber(frame.index + 1)}{frame.timestamp_seconds != null && <span className="mr-1 text-slate-500" dir="ltr">{frame.timestamp_seconds.toFixed(1)}s</span>}</span>{frame.freshness_score !== null && <b>{faNumber(frame.freshness_score)}</b>}</div>{frame.label && <p className="text-slate-600">{frame.label}</p>}</figcaption>
         </figure>)}</div>
       </ReportSection>}
 

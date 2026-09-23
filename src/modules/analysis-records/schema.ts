@@ -46,6 +46,8 @@ export const fruitQualityResultSchema = z.object({
         type: z.enum(DEFECT_TYPES),
         label_fa: z.string().max(100),
         severity: z.enum(['low', 'medium', 'high']),
+        extent: z.enum(['few', 'some', 'most']).nullable().optional(),
+        extent_label_fa: z.string().max(60).nullable().optional(),
         affected_percent: percent.nullable(),
         note_fa: z.string().max(500).nullable(),
       }),
@@ -55,6 +57,18 @@ export const fruitQualityResultSchema = z.object({
   shelf_life_days_estimate: z.number().min(0).max(365).nullable().optional(),
   recommendation_fa: z.string().max(2000).nullable().optional(),
   storage_advice_fa: z.string().max(2000).nullable().optional(),
+  quality_profile: z
+    .array(
+      z.object({
+        key: z.string().max(40),
+        label_fa: z.string().max(120),
+        value_fa: z.string().max(200),
+        status: z.enum(['good', 'watch', 'poor']),
+        note_fa: z.string().max(400).nullable(),
+      }),
+    )
+    .max(12)
+    .optional(),
   frames: z.array(qualityFrameSchema).max(32).optional(),
   frame_statistics: z
     .object({

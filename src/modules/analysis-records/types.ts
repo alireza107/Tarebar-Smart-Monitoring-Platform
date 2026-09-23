@@ -17,7 +17,7 @@ export type DefectType = (typeof DEFECT_TYPES)[number]
 export const DEFECT_LABELS_FA: Record<DefectType, string> = {
   bruising: 'کوفتگی',
   mold: 'کپک',
-  discoloration: 'تغییر رنگ',
+  discoloration: 'لکه‌های پوستی',
   soft_spot: 'نرم‌شدگی',
   wrinkling: 'چروکیدگی',
   dryness: 'خشکی',
@@ -30,6 +30,29 @@ export const DEFECT_LABELS_FA: Record<DefectType, string> = {
 export const SEVERITY_LABELS_FA = { low: 'کم', medium: 'متوسط', high: 'زیاد' } as const
 export type DefectSeverity = keyof typeof SEVERITY_LABELS_FA
 
+/** How much of the visible produce shows a defect — a band, never a percentage. */
+export const EXTENT_LABELS_FA = { few: 'کم', some: 'بخشی از محصول', most: 'بیشتر محصول' } as const
+export type DefectExtent = keyof typeof EXTENT_LABELS_FA
+
+/** Share of the lot in one state, in words. The model's percentages are a judgement, not a measurement. */
+export function shareBandFa(percent: number): string {
+  if (percent <= 0) return 'دیده نمی‌شود'
+  if (percent <= 10) return 'بسیار کم'
+  if (percent <= 25) return 'کم'
+  if (percent <= 50) return 'بخشی'
+  if (percent <= 75) return 'بیشتر'
+  return 'بخش عمده'
+}
+
+/** One observable aspect of the lot's condition, composed by the analytics service. */
+export interface QualityAspect {
+  key: string
+  label_fa: string
+  value_fa: string
+  status: 'good' | 'watch' | 'poor'
+  note_fa: string | null
+}
+
 export interface FruitTypeShare {
   name_fa: string
   share_percent: number | null
@@ -39,6 +62,8 @@ export interface FruitDefect {
   type: DefectType
   label_fa: string
   severity: DefectSeverity
+  extent?: DefectExtent | null
+  extent_label_fa?: string | null
   affected_percent: number | null
   note_fa: string | null
 }
@@ -86,6 +111,7 @@ export interface FruitQualityResult {
   shelf_life_days_estimate?: number | null
   recommendation_fa?: string | null
   storage_advice_fa?: string | null
+  quality_profile?: QualityAspect[]
   frames?: QualityFrame[]
   frame_statistics?: FrameStatistics | null
   total_seconds?: number
@@ -123,6 +149,7 @@ export interface QualityDetails {
   defects: FruitDefect[]
   shelfLifeDaysEstimate: number | null
   storageAdviceFa: string | null
+  qualityProfile?: QualityAspect[]
   frameStatistics: FrameStatistics | null
   frames: Array<Omit<QualityFrame, 'thumbnail'>>
   totalSeconds: number | null
