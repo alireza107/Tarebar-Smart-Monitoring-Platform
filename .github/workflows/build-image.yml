@@ -3,7 +3,7 @@ name: Build and push frontend image
 on:
   push:
     # TEMPORARY: feat/docker-cicd-redesign is for GHCR publish validation only.
-    branches: [master, main, development, feat-fruit-quality, platform-improvements-2026-09]
+    branches: [master, main, development, feat-fruit-quality, feat/platform-improvements-2026-09]
     tags: ["v*"]
   workflow_dispatch:
 
