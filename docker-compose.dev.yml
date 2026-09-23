@@ -57,6 +57,7 @@ services:
       FRUIT_PIPELINE_API_URL: ${FRUIT_PIPELINE_INTERNAL_API_URL:-http://fruit-pipeline:8010}
       FRUIT_PIPELINE_LEGACY_DASHBOARD: ${FRUIT_PIPELINE_LEGACY_DASHBOARD:-false}
       ANALYTICS_READ_KEY: ${ANALYTICS_READ_KEY:-local-read-key-change-me}
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
@@ -113,6 +114,7 @@ services:
       VIDEO_INSIGHT_MODEL_PATH: /models/${VIDEO_INSIGHT_MODEL_DIRNAME:-Qwen2.5-VL-3B-Instruct}
       VIDEO_INSIGHT_LIVE_SAMPLE_INTERVAL_SECONDS: ${VIDEO_INSIGHT_LIVE_SAMPLE_INTERVAL_SECONDS:-0.75}
       VIDEO_INSIGHT_PRELOAD: ${VIDEO_INSIGHT_PRELOAD:-true}
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
       MEDIAMTX_RTSP_URL: ${MEDIAMTX_INTERNAL_RTSP_URL:-rtsp://mediamtx:8554}
       DATABASE_URL: ${APP_DATABASE_URL:-postgresql://postgres:postgres@db:5432/tarebar}
       ANALYTICS_DATABASE_URL: ${ANALYTICS_DATABASE_URL:-postgresql://postgres:postgres@db:5432/tarebar}
@@ -165,6 +167,7 @@ services:
       FRUIT_PIPELINE_DEVICE: ${FRUIT_PIPELINE_DEVICE:-cpu}
       FRUIT_PIPELINE_DETECTOR_WEIGHTS: /models/yolo11x.pt
       FRUIT_PIPELINE_SAM_CHECKPOINT: /models/sam_vit_l_0b3195.pth
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
     volumes:
       - fruit-pipeline-data:/app/output/dashboard
       - ${FRUIT_PIPELINE_MODELS_DIR:-../fruit-pipeline/models}:/models:ro

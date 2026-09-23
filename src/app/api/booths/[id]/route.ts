@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { unauthorized, forbidden, notFound, validationError, serverError } from '@/lib/api-responses'
+import { unauthorized, forbidden, notFound, validationError, serverError, conflict } from '@/lib/api-responses'
+import { isUniqueViolation } from '@/lib/prisma-errors'
 import { checkPermission, PermissionError, type Role } from '@/lib/permissions'
 import { assertMarketScope, ScopeError } from '@/lib/scope-guard'
 import { boothService } from '@/modules/booth/service'
@@ -16,9 +17,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params
     const booth = await boothService.getById(id)
     if (!booth) return notFound()
+    await assertMarketScope(session.user.id, session.user.role as Role, booth.marketId)
     return NextResponse.json({ data: booth })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }
@@ -43,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: booth })
   } catch (e) {
     if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
+    if (isUniqueViolation(e)) return conflict('غرفه‌ای با این شماره در این بازار وجود دارد')
     return serverError()
   }
 }

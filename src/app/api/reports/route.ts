@@ -4,6 +4,7 @@ import { unauthorized, forbidden, serverError } from '@/lib/api-responses'
 import { checkPermission, PermissionError } from '@/lib/permissions'
 import type { Role } from '@/lib/permissions'
 import { db } from '@/lib/db'
+import { serviceAuthHeaders } from '@/lib/service-token'
 import { reportRepository } from '@/modules/report/repository'
 import { cameraService } from '@/modules/camera/service'
 
@@ -15,6 +16,7 @@ async function withRestrictedEvents<T extends object>(base: T, userId: string, r
     const response = await fetch(`${analyticsBase}/api/v1/restricted-area-events?limit=200`, {
       signal: AbortSignal.timeout(5_000),
       cache: 'no-store',
+      headers: serviceAuthHeaders({ id: userId, role }),
     })
     if (!response.ok) return { ...base, restrictedAreaEvents: [] }
     const body = await response.json() as { data?: Array<Record<string, unknown>> }

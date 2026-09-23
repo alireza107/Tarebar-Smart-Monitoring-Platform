@@ -1,3 +1,5 @@
+import { authorizedInit } from '@/lib/service-token-client'
+
 export const FRUIT_API_BASE = (
   process.env.NEXT_PUBLIC_FRUIT_PIPELINE_API_URL ?? 'http://localhost:8010'
 ).replace(/\/$/, '')
@@ -5,7 +7,7 @@ export const FRUIT_API_BASE = (
 export async function fruitApiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${FRUIT_API_BASE}${path}`, init)
+    response = await fetch(`${FRUIT_API_BASE}${path}`, await authorizedInit(init))
   } catch {
     throw new Error(`سرویس تحلیل میوه در ${FRUIT_API_BASE} در دسترس نیست`)
   }

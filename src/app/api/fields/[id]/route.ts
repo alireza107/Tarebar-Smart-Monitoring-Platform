@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { unauthorized, forbidden, notFound, validationError, serverError } from '@/lib/api-responses'
 import { checkPermission, PermissionError, type Role } from '@/lib/permissions'
+import { assertFieldScope, ScopeError } from '@/lib/scope-guard'
 import { fieldService } from '@/modules/field/service'
 import { updateFieldSchema } from '@/modules/field/schema'
 
@@ -15,9 +16,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params
     const field = await fieldService.getById(id)
     if (!field) return notFound()
+    await assertFieldScope(session.user.id, session.user.role as Role, field.id)
     return NextResponse.json({ data: field })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }

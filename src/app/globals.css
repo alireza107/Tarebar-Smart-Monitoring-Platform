@@ -211,3 +211,50 @@
     @apply font-sans;
   }
 }
+
+/* ─── Printable reports ─────────────────────────────────────────────────────
+   Reports are printed (or saved as PDF) straight from the browser, which renders
+   Persian text and the bundled Vazir font correctly. */
+@page {
+  size: A4;
+  margin: 14mm 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Toasts and floating dev tools never belong on paper. */
+  [data-sonner-toaster],
+  .tsqd-parent-container {
+    display: none !important;
+  }
+
+  /* Sections flow across pages so no paper is wasted; only the small units
+     (cards, table rows, list items, figures) are kept in one piece, and a
+     section title never stays alone at the bottom of a page. */
+  .report-section > header,
+  .report-sheet p.font-semibold {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .report-sheet :is(tr, li, figure, .rounded-lg, .rounded-xl) {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .report-sheet {
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+}

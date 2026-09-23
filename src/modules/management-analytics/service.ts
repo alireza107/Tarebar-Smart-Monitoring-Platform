@@ -44,16 +44,18 @@ export const managementAnalyticsService = {
     role: Role,
     filters: ManagementFilters,
   ): Promise<ManagementOverview | null> {
-    const allowed = await managementAnalyticsRepository.canAccessLocation(
+    const narrowed = await managementAnalyticsRepository.narrowToScope(
       userId,
       role,
       filters.locationType,
       filters.locationId,
     )
-    if (!allowed) return null
+    if (!narrowed) return null
+    const requested = filters
+    filters = { ...filters, ...narrowed }
 
     const analyticsBase = process.env.VIDEO_ANALYTICS_API_URL?.replace(/\/+$/, '')
-    if (!analyticsBase) return emptyOverview(filters)
+    if (!analyticsBase) return emptyOverview(requested)
 
     const query = new URLSearchParams()
     Object.entries(filters).forEach(([key, value]) => {
@@ -67,14 +69,15 @@ export const managementAnalyticsService = {
         signal: AbortSignal.timeout(5_000),
         headers: analyticsKey ? { 'X-Analytics-Key': analyticsKey } : undefined,
       })
-      if (!response.ok) return emptyOverview(filters)
+      if (!response.ok) return emptyOverview(requested)
       const body: unknown = await response.json()
       const data = body && typeof body === 'object' && 'data' in body
         ? (body as { data: unknown }).data
         : body
-      return isOverview(data) ? { ...data, filters } : emptyOverview(filters)
+      // Echo the filters the client sent, so its cache keys stay stable.
+      return isOverview(data) ? { ...data, filters: requested } : emptyOverview(requested)
     } catch {
-      return emptyOverview(filters)
+      return emptyOverview(requested)
     }
   },
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { BrainCircuit, Loader2, Radio, Square, Upload } from 'lucide-react'
+import { BrainCircuit, Download, FileSpreadsheet, Loader2, Radio, Square, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,11 +11,15 @@ import { CameraStreamPlayer } from '@/app/(dashboard)/monitoring/_components/cam
 import { derivePlaybackUrls } from '@/modules/camera/stream'
 import type { Camera } from '@/modules/camera/types'
 import { videoAnalyticsApiJson } from '@/lib/video-analytics-api'
+import { downloadCsv, fileStamp } from '@/lib/download'
 
 type YesNo = 'Yes' | 'No'
 type InsightResult = {
   answers: { fighting: YesNo; floor_clean: YesNo }
+  frame_count?: number
   inference_seconds: number
+  thumbnail?: string | null
+  model?: string | null
 }
 type InsightLog = InsightResult & { id: number; checkedAt: Date; window: string }
 type InferenceRequest = { intervalSeconds: number; startSeconds?: number; endSeconds?: number; signal: AbortSignal }
@@ -113,7 +117,19 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
         data.set('num_frames', '8')
         data.set('window_start_seconds', String(request.startSeconds ?? 0))
         data.set('window_end_seconds', String(request.endSeconds))
-        return videoAnalyticsApiJson<{ data: InsightResult }>('/api/v1/video-insights', { method: 'POST', body: data, signal: request.signal })
+        data.set('include_thumbnail', 'true')
+        const response = await videoAnalyticsApiJson<{ data: InsightResult }>('/api/v1/video-insights', { method: 'POST', body: data, signal: request.signal })
+        // Live windows are stored by the camera route; uploaded ones are stored here.
+        void fetch('/api/incident-checks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            result: response.data,
+            fileName: file.name,
+            windowLabel: `${formatVideoTime(request.startSeconds ?? 0)}–${formatVideoTime(request.endSeconds ?? 0)}`,
+            windowSeconds: Math.max(1, (request.endSeconds ?? 0) - (request.startSeconds ?? 0)),
+          }),
+        }).catch(() => undefined)
+        return response
       }
       if (!cameraId) throw new Error('ابتدا یک دوربین زنده انتخاب کنید')
       return appJson<{ data: InsightResult }>(`/api/cameras/${cameraId}/video-insight`, {
@@ -190,6 +206,22 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
     }
   }
 
+  function exportLog() {
+    downloadCsv(
+      `incident-log-${fileStamp()}.csv`,
+      ['زمان بررسی', 'بازه', 'منبع', 'درگیری', 'کف تمیز', 'نیازمند توجه', 'زمان استنتاج (ثانیه)'],
+      [...logs].reverse().map(log => [
+        log.checkedAt.toLocaleString('fa-IR'),
+        log.window,
+        mode === 'live' ? `دوربین: ${selectedCamera?.name ?? ''}` : `فایل: ${file?.name ?? ''}`,
+        log.answers.fighting === 'Yes' ? 'بله' : 'خیر',
+        log.answers.floor_clean === 'Yes' ? 'بله' : 'خیر',
+        log.answers.fighting === 'Yes' || log.answers.floor_clean === 'No' ? 'بله' : 'خیر',
+        log.inference_seconds,
+      ]),
+    )
+  }
+
   const validInterval = Number(intervalSeconds) >= 10 && Number(intervalSeconds) <= 60
   const canStart = validInterval && (mode === 'recorded' ? Boolean(file && videoDuration) : Boolean(cameraId))
 
@@ -230,6 +262,17 @@ export function VideoInsightClient({ mode }: { mode: 'recorded' | 'live' }) {
 
       {running && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />در حال پردازش بازه بعدی و ثبت رویدادها…</p>}
       {inference.error && !(inference.error instanceof DOMException && inference.error.name === 'AbortError') && <p className="text-sm text-red-600">{inference.error.message}</p>}
+    </div>
+
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 shadow-sm">
+      <div className="text-xs leading-6 text-muted-foreground">
+        <p><span className="font-semibold text-foreground">{logs.length.toLocaleString('fa-IR')}</span> بازه در این نشست بررسی شده؛ <span className="font-semibold text-red-700">{logs.filter(log => log.answers.fighting === 'Yes' || log.answers.floor_clean === 'No').length.toLocaleString('fa-IR')}</span> مورد نیازمند توجه.</p>
+        <p>همه بازه‌ها در سوابق ثبت می‌شوند و در گزارش مدیریتی مکان دوربین محاسبه می‌شوند.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={logs.length === 0} onClick={exportLog}><FileSpreadsheet />خروجی این نشست (CSV)</Button>
+        <a href={`/api/incident-checks/export?format=csv${mode === 'live' && cameraId ? `&cameraId=${encodeURIComponent(cameraId)}` : ''}`} className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium hover:bg-accent"><Download className="size-3.5" />همه سوابق ثبت‌شده (CSV)</a>
+      </div>
     </div>
 
     <div className="grid gap-5 xl:grid-cols-2">

@@ -10,6 +10,11 @@ export default auth((req: NextRequest & { auth: { user?: { role?: string } } | n
   const { pathname } = req.nextUrl
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
+  if (!req.auth && pathname.startsWith('/api/')) {
+    // fetch() callers expect JSON, not a redirect to the HTML login page.
+    return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 })
+  }
+
   if (!req.auth && !isPublic) {
     return NextResponse.redirect(new URL('/login', req.url))
   }

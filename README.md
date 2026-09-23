@@ -208,6 +208,31 @@ Scope enforcement (own field / own market only) is applied in the service layer.
 | `/api/cameras/[id]` | GET · PATCH · DELETE |
 | `/api/dashboard/stats` | GET |
 | `/api/reports` | GET |
+| `/api/reports/executive` | GET — executive report of a field, market or booth for a period |
+| `/api/fruit-quality-assessments` | GET · POST — stored fruit-quality results (`/[id]` detail, `/export?format=csv\|json`) |
+| `/api/incident-checks` | GET · POST — stored incident-detection windows (`/export`) |
+| `/api/fruit-measurement-runs` | GET · POST — summaries of fruit counting and sizing jobs |
+| `/api/service-token` | GET — short-lived token for the browser's direct calls to the AI services |
+| `/api/system/health` | GET — live status of database, AI services, fleet sampler and MediaMTX |
+
+### Analysis records and reports
+
+Results of the AI services are stored in PostgreSQL (`FruitQualityAssessment`,
+`IncidentCheck`, `FruitMeasurementRun`) with the field, market and booth of the
+camera resolved at write time. Live analyses are stored by the camera proxy
+routes; uploaded files are stored by the client after the analysis, optionally
+filed under a market or booth. These rows feed the CSV/JSON exports, the
+printable quality report (`/reports/quality/[id]`) and the executive report
+(`/reports/executive`), whose scorecard, highlights and recommendations come from
+the pure rule module `src/modules/executive-report/insights.ts`.
+
+### Service authentication
+
+With `SERVICE_AUTH_SECRET` set (same value in all three services), browser calls
+to video-analytics and fruit-pipeline carry an HS256 token from
+`/api/service-token` — as a bearer header for `fetch`, as `?access_token=` for
+`EventSource`, `<img>`, `<video>` and download links (`src/lib/service-token-client.ts`,
+`src/hooks/use-tokenized-url.ts`). Server-side proxies add the same token.
 
 Recorded-video jobs are sent directly from the browser to the separately
 running video analytics API. Generated videos, CSV files, event logs, and

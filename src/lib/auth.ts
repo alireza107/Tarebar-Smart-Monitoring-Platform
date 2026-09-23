@@ -30,7 +30,8 @@ const config: NextAuthConfig = {
         const user = await db.user.findFirst({
           where: { username: parsed.data.username, deletedAt: null },
         })
-        if (!user?.password) return null
+        // A deactivated account keeps its record but must not be able to sign in.
+        if (!user?.password || !user.isActive) return null
 
         const valid = await bcrypt.compare(parsed.data.password, user.password)
         if (!valid) return null

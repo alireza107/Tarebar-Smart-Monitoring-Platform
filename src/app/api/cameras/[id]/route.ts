@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { unauthorized, forbidden, notFound, validationError, serverError } from '@/lib/api-responses'
-import { checkPermission, PermissionError } from '@/lib/permissions'
+import { checkPermission, hasPermission, PermissionError } from '@/lib/permissions'
 import { assertCameraScope, ScopeError } from '@/lib/scope-guard'
 import { cameraService } from '@/modules/camera/service'
 import { updateCameraSchema } from '@/modules/camera/schema'
+import { redactStreamCredentials } from '@/modules/camera/stream'
 import type { Role } from '@/lib/permissions'
 
 type Params = { params: Promise<{ id: string }> }
@@ -17,9 +18,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params
     const camera = await cameraService.getById(id)
     if (!camera) return notFound()
-    return NextResponse.json({ data: camera })
+    const role = session.user.role as Role
+    await assertCameraScope(session.user.id, role, camera)
+    const data = hasPermission(role, 'camera', 'update')
+      ? camera
+      : { ...camera, streamUrl: redactStreamCredentials(camera.streamUrl) }
+    return NextResponse.json({ data })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }

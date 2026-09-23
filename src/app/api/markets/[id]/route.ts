@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { unauthorized, forbidden, notFound, validationError, serverError } from '@/lib/api-responses'
 import { checkPermission, PermissionError, type Role } from '@/lib/permissions'
-import { assertFieldScope, ScopeError } from '@/lib/scope-guard'
+import { assertFieldScope, assertMarketScope, ScopeError } from '@/lib/scope-guard'
 import { marketService } from '@/modules/market/service'
 import { updateMarketSchema } from '@/modules/market/schema'
 
@@ -16,9 +16,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { id } = await params
     const market = await marketService.getById(id)
     if (!market) return notFound()
+    await assertMarketScope(session.user.id, session.user.role as Role, market.id)
     return NextResponse.json({ data: market })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }
@@ -35,6 +36,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const body = await req.json()
     const parsed = updateMarketSchema.safeParse(body)
     if (!parsed.success) return validationError(parsed.error)
+    if (parsed.data.fieldId && parsed.data.fieldId !== existing.fieldId) {
+      await assertFieldScope(session.user.id, session.user.role as Role, parsed.data.fieldId)
+    }
     const market = await marketService.update(id, parsed.data)
     return NextResponse.json({ data: market })
   } catch (e) {

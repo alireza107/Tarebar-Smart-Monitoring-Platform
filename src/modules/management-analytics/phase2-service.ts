@@ -1,3 +1,4 @@
+import { comparisonRange } from '@/lib/dates'
 import type { Role } from '@/lib/permissions'
 import { managementAnalyticsRepository } from './repository'
 import {
@@ -39,25 +40,7 @@ function emptyQueues(filters: ModuleFilters): QueueAnalytics {
 }
 
 function comparisonPeriod(filters: ManagementFilters) {
-  if (filters.comparison === 'none') return null
-  const from = new Date(`${filters.from}T00:00:00Z`)
-  const to = new Date(`${filters.to}T00:00:00Z`)
-  if (filters.comparison === 'previous_week') {
-    from.setUTCDate(from.getUTCDate() - 7)
-    to.setUTCDate(to.getUTCDate() - 7)
-    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
-  }
-  if (filters.comparison === 'previous_month') {
-    from.setUTCMonth(from.getUTCMonth() - 1)
-    to.setUTCMonth(to.getUTCMonth() - 1)
-    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
-  }
-  const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1
-  const previousTo = new Date(from)
-  previousTo.setUTCDate(previousTo.getUTCDate() - 1)
-  const previousFrom = new Date(previousTo)
-  previousFrom.setUTCDate(previousFrom.getUTCDate() - days + 1)
-  return { from: previousFrom.toISOString().slice(0, 10), to: previousTo.toISOString().slice(0, 10) }
+  return comparisonRange(filters.from, filters.to, filters.comparison)
 }
 
 function emptySpatial(filters: ModuleFilters): SpatialAnalytics {
@@ -103,9 +86,9 @@ async function fetchAggregates(module: ModuleName, filters: ModuleFilters) {
 
 export const phase2AnalyticsService = {
   async get(userId: string, role: Role, module: ModuleName, filters: ModuleFilters) {
-    const allowed = await managementAnalyticsRepository.canAccessLocation(userId, role, filters.locationType, filters.locationId)
-    if (!allowed) return null
-    const data = await fetchAggregates(module, filters)
+    const narrowed = await managementAnalyticsRepository.narrowToScope(userId, role, filters.locationType, filters.locationId)
+    if (!narrowed) return null
+    const data = await fetchAggregates(module, { ...filters, ...narrowed })
     if (data) return { ...data, filters, bucket: filters.bucket }
     if (module === 'people-flow') return emptyPeopleFlow(filters)
     if (module === 'queues') return emptyQueues(filters)

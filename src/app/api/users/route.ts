@@ -10,6 +10,11 @@ export async function GET() {
     const session = await auth()
     if (!session) return unauthorized()
     checkPermission(session, 'user', 'read')
+    // Only organisation admins manage accounts; everybody else sees their own record.
+    if (session.user.role !== 'ORG_ADMIN') {
+      const self = await userService.getById(session.user.id)
+      return NextResponse.json({ data: self ? [self] : [] })
+    }
     const users = await userService.getAll()
     return NextResponse.json({ data: users })
   } catch (e) {
