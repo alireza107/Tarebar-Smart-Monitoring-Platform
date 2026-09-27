@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { forbidden, serverError, unauthorized } from '@/lib/api-responses'
 import { checkPermission, PermissionError } from '@/lib/permissions'
+import { serviceAuthHeaders } from '@/lib/service-token'
 
 export async function GET() {
   try {
@@ -17,7 +18,7 @@ export async function GET() {
     const response = await fetch(`${analyticsBase}/api/v1/fleet/status`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(5_000),
-      headers: analyticsKey ? { 'X-Analytics-Key': analyticsKey } : undefined,
+      headers: { ...(analyticsKey ? { 'X-Analytics-Key': analyticsKey } : {}), ...serviceAuthHeaders(session.user) },
     })
     if (!response.ok) {
       return NextResponse.json({ data: { enabled: false, fps: 0.5, cameras: 0, running: 0, workers: [] } })

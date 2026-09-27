@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { unauthorized, forbidden, notFound, validationError, serverError } from '@/lib/api-responses'
+import { unauthorized, forbidden, notFound, validationError, serverError, conflict } from '@/lib/api-responses'
+import { isUniqueViolation } from '@/lib/prisma-errors'
 import { checkPermission, PermissionError } from '@/lib/permissions'
 import { boothCategoryService } from '@/modules/booth-category/service'
 import { updateBoothCategorySchema } from '@/modules/booth-category/schema'
@@ -37,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: category })
   } catch (e) {
     if (e instanceof PermissionError) return forbidden()
+    if (isUniqueViolation(e)) return conflict('دسته‌بندی با این نام وجود دارد')
     return serverError()
   }
 }

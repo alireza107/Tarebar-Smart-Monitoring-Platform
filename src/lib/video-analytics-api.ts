@@ -1,3 +1,5 @@
+import { authorizedInit } from '@/lib/service-token-client'
+
 export const VIDEO_ANALYTICS_API_BASE = (
   process.env.NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL ?? 'http://localhost:8000'
 ).replace(/\/$/, '')
@@ -5,7 +7,7 @@ export const VIDEO_ANALYTICS_API_BASE = (
 export async function videoAnalyticsApiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${VIDEO_ANALYTICS_API_BASE}${path}`, init)
+    response = await fetch(`${VIDEO_ANALYTICS_API_BASE}${path}`, await authorizedInit(init))
   } catch {
     throw new Error(`سرویس تحلیل ویدیو در ${VIDEO_ANALYTICS_API_BASE} در دسترس نیست`)
   }

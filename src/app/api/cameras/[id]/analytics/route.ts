@@ -5,6 +5,7 @@ import { forbidden, notFound, serverError, unauthorized, validationError } from 
 import { checkPermission, PermissionError } from '@/lib/permissions'
 import { assertCameraScope, ScopeError } from '@/lib/scope-guard'
 import { logger } from '@/lib/logger'
+import { serviceAuthHeaders } from '@/lib/service-token'
 import { cameraService } from '@/modules/camera/service'
 import { deriveAnalyticsRtspUrl } from '@/modules/camera/stream'
 import { db } from '@/lib/db'
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     ).replace(/\/+$/, '')
     const response = await fetch(`${analyticsBase}/api/v1/stream-jobs`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...serviceAuthHeaders(session.user) },
       body: JSON.stringify({
         stream_url: deriveAnalyticsRtspUrl(camera.streamUrl),
         application_id: parsed.data.applicationIds ? undefined : (parsed.data.applicationId ?? 'people_counting'),

@@ -40,6 +40,12 @@ enum RegionType {
   QUEUE
 }
 
+// Where an analysis result came from: a live camera stream or an uploaded file.
+enum AnalysisSource {
+  LIVE
+  UPLOAD
+}
+
 // ─── Auth.js required models ─────────────────────────────────────────────────
 
 model Account {
@@ -122,6 +128,10 @@ model Field {
   markets Market[]
   cameras Camera[]
   scopes  UserScope[]
+
+  qualityAssessments FruitQualityAssessment[]
+  incidentChecks     IncidentCheck[]
+  measurementRuns    FruitMeasurementRun[]
 }
 
 model Market {
@@ -138,6 +148,10 @@ model Market {
   cameras Camera[]
   scopes  UserScope[]
   regions Region[]
+
+  qualityAssessments FruitQualityAssessment[]
+  incidentChecks     IncidentCheck[]
+  measurementRuns    FruitMeasurementRun[]
 }
 
 model BoothCategory {
@@ -164,6 +178,10 @@ model Booth {
   category BoothCategory @relation(fields: [categoryId], references: [id])
   cameras  Camera[]
   regions  RegionBooth[]
+
+  qualityAssessments FruitQualityAssessment[]
+  incidentChecks     IncidentCheck[]
+  measurementRuns    FruitMeasurementRun[]
 
   @@unique([marketId, number])
 }
@@ -192,6 +210,10 @@ model Camera {
 
   regions      CameraRegion[]
   calibrations CameraCalibration[]
+
+  qualityAssessments FruitQualityAssessment[]
+  incidentChecks     IncidentCheck[]
+  measurementRuns    FruitMeasurementRun[]
 }
 
 model CameraCalibration {
@@ -306,5 +328,121 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([marketId])
+  @@index([createdAt])
+}
+
+// ─── Analysis records ───────────────────────────────────────────────────────
+//
+// Results of the AI services are stored here so they can be exported, scoped by
+// location and aggregated into the executive report. The three location ids are
+// denormalised at write time (booth → market → field), which keeps report
+// queries to a single indexed lookup per level.
+
+// One visual freshness assessment (Qwen2.5-VL) of a fruit image, video or stream.
+model FruitQualityAssessment {
+  id                 String         @id @default(cuid())
+  source             AnalysisSource
+  cameraId           String?
+  fieldId            String?
+  marketId           String?
+  boothId            String?
+  fileName           String?
+  hasFruit           Boolean
+  label              String // Persian label returned by the model, e.g. "تازه"
+  grade              String? // A | B | C | D, derived from the score
+  freshnessScore     Int
+  confidence         Int
+  freshPercent       Int
+  middlePercent      Int
+  rottenPercent      Int
+  fruitCountEstimate Int?
+  summaryFa          String         @db.Text
+  recommendationFa   String?        @db.Text
+  detailLevel        String         @default("summary")
+  details            Json // fruit types, defects, per-frame scores, statistics, advice
+  thumbnails         Json? // small JPEG data URLs kept as report evidence
+  frameCount         Int
+  inferenceSeconds   Float
+  modelName          String?
+  createdById        String?
+  createdByName      String?
+  createdAt          DateTime       @default(now())
+
+  camera Camera? @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  field  Field?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  market Market? @relation(fields: [marketId], references: [id], onDelete: SetNull)
+  booth  Booth?  @relation(fields: [boothId], references: [id], onDelete: SetNull)
+
+  @@index([fieldId, createdAt])
+  @@index([marketId, createdAt])
+  @@index([boothId, createdAt])
+  @@index([cameraId, createdAt])
+  @@index([createdAt])
+}
+
+// One incident-detection window: are people fighting, is the floor clean.
+model IncidentCheck {
+  id               String         @id @default(cuid())
+  source           AnalysisSource
+  cameraId         String?
+  fieldId          String?
+  marketId         String?
+  boothId          String?
+  fileName         String?
+  fighting         Boolean
+  floorClean       Boolean
+  windowLabel      String? // e.g. "00:10–00:20" for a recorded video
+  windowSeconds    Float?
+  frameCount       Int
+  inferenceSeconds Float
+  thumbnail        String?        @db.Text // evidence frame, stored for alerts only
+  modelName        String?
+  createdById      String?
+  createdByName    String?
+  createdAt        DateTime       @default(now())
+
+  camera Camera? @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  field  Field?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  market Market? @relation(fields: [marketId], references: [id], onDelete: SetNull)
+  booth  Booth?  @relation(fields: [boothId], references: [id], onDelete: SetNull)
+
+  @@index([fieldId, createdAt])
+  @@index([marketId, createdAt])
+  @@index([boothId, createdAt])
+  @@index([cameraId, createdAt])
+  @@index([createdAt])
+}
+
+// Summary of one completed fruit counting and sizing job of the fruit pipeline.
+model FruitMeasurementRun {
+  id                     String         @id @default(cuid())
+  source                 AnalysisSource
+  cameraId               String?
+  fieldId                String?
+  marketId               String?
+  boothId                String?
+  serviceJobId           String         @unique
+  processingMode         String?
+  palletType             String?
+  processedFrames        Int
+  totalFruitObservations Int
+  lastFruitCount         Int?
+  avgWidthMm             Float?
+  avgLengthMm            Float?
+  avgDiameterMm          Float?
+  sizeStatistics         Json?
+  createdById            String?
+  createdByName          String?
+  createdAt              DateTime       @default(now())
+
+  camera Camera? @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  field  Field?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  market Market? @relation(fields: [marketId], references: [id], onDelete: SetNull)
+  booth  Booth?  @relation(fields: [boothId], references: [id], onDelete: SetNull)
+
+  @@index([fieldId, createdAt])
+  @@index([marketId, createdAt])
+  @@index([boothId, createdAt])
+  @@index([cameraId, createdAt])
   @@index([createdAt])
 }

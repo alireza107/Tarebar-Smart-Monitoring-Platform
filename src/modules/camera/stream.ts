@@ -121,3 +121,22 @@ export function deriveHlsUrl(streamUrl: string | null | undefined): string | nul
     return null
   }
 }
+
+/**
+ * Hide `user:password@` of a stream URL while keeping scheme, host and path.
+ * Roles that may not edit a camera have no need for its credentials, and the
+ * playback URLs are derived from host and path only.
+ */
+export function redactStreamCredentials(streamUrl: string | null | undefined): string | null {
+  if (!streamUrl) return null
+  try {
+    const parsed = new URL(streamUrl)
+    if (!parsed.username && !parsed.password) return streamUrl
+    parsed.username = '***'
+    parsed.password = ''
+    return parsed.toString()
+  } catch {
+    // Not a parseable URL: strip a userinfo part textually as a last resort.
+    return streamUrl.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1***@')
+  }
+}

@@ -25,6 +25,8 @@ import {
 import { buildConfiguredQueueCameraYaml, buildRestrictedAreaCameraYaml } from './restricted-area-config'
 import { CameraLivePreview } from './camera-live-preview'
 import type { Camera as CameraType } from '@/modules/camera/types'
+import { useTokenizedUrl } from '@/hooks/use-tokenized-url'
+import { appendAccessToken, authorizedInit, getServiceToken, withServiceToken } from '@/lib/service-token-client'
 
 const API_BASE = (
   process.env.NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL ?? 'http://localhost:8000'
@@ -143,7 +145,7 @@ type LiveTaskId = (typeof LIVE_TASKS)[number]['id']
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${API_BASE}${path}`, init)
+    response = await fetch(`${API_BASE}${path}`, await authorizedInit(init))
   } catch {
     throw new Error(`سرویس تحلیل ویدیو در ${API_BASE} در دسترس نیست`)
   }
@@ -160,6 +162,11 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function artifactUrl(artifact: Artifact): string {
   return `${API_BASE}${artifact.url}`
+}
+
+/** Open a file of the analytics service with a token minted at click time, so an old page still works. */
+async function openServiceFile(url: string) {
+  window.open(await withServiceToken(url), '_blank', 'noopener,noreferrer')
 }
 
 type ExtractedFrame = {
@@ -222,7 +229,7 @@ async function extractFirstVideoFrameViaServer(file: File): Promise<ExtractedFra
   formData.append('video', file)
   let response: Response
   try {
-    response = await fetch(`${API_BASE}/api/v1/frames/first`, { method: 'POST', body: formData })
+    response = await fetch(`${API_BASE}/api/v1/frames/first`, await authorizedInit({ method: 'POST', body: formData }))
   } catch {
     throw new Error(`سرویس تحلیل ویدیو در ${API_BASE} در دسترس نیست`)
   }
@@ -815,6 +822,10 @@ function JobCard({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] }),
   })
   const output = job.artifacts.heatmap_video ?? job.artifacts.annotated_video
+  const previewStreamUrl = useTokenizedUrl(
+    ['queued', 'running', 'cancelling'].includes(job.status) ? `${API_BASE}/api/v1/jobs/${job.id}/preview-stream` : null,
+  )
+  const outputUrl = useTokenizedUrl(job.status === 'completed' && output ? artifactUrl(output) : null)
   const outputLabel = job.artifacts.heatmap_video
     ? 'ویدیوی نقشه حرارتی تراکم'
     : 'ویدیوی خروجی تحلیل'
@@ -873,13 +884,13 @@ function JobCard({
               <p className="text-xs text-muted-foreground" dir="ltr">{live.progress.toFixed(1)}% · frame {(live.frame_index ?? -1) + 1}</p>
             </div>
           )}
-          {live?.preview_reference && (
+          {live?.preview_reference && previewStreamUrl && (
             <div className="aspect-video w-full max-w-4xl overflow-hidden rounded-lg bg-black">
               {/* The persistent MJPEG request keeps the previous decoded frame visible. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="size-full object-contain"
-                src={`${API_BASE}/api/v1/jobs/${job.id}/preview-stream`}
+                src={previewStreamUrl}
                 alt="Live processed video stream"
               />
             </div>
@@ -894,10 +905,10 @@ function JobCard({
 
       {job.status === 'completed' && (
         <div className="space-y-4 p-4">
-          {output && (
+          {output && outputUrl && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">{outputLabel}</p>
-              <video className="aspect-video w-full max-w-3xl rounded-lg bg-black object-contain" controls preload="metadata" src={artifactUrl(output)} />
+              <video className="aspect-video w-full max-w-3xl rounded-lg bg-black object-contain" controls preload="metadata" src={outputUrl} />
             </div>
           )}
 
@@ -907,19 +918,31 @@ function JobCard({
             <DynamicMetrics schema={job.application.metric_schema} live={live ?? job.live} history={history} phase="final" />
           )}
 
+          <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+            <p className="text-xs font-semibold">خروجی کامل تحلیل</p>
+            <p className="text-[11px] leading-5 text-muted-foreground">بسته کامل شامل گزارش تجمیعی (JSON)، سری زمانی شاخص‌ها (CSV)، رویدادها، ویدیوی خروجی و نقشه‌های حرارتی است.</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void openServiceFile(`${API_BASE}/api/v1/jobs/${job.id}/export.zip`)} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                <Download className="size-3.5" /> دانلود بسته کامل (ZIP)
+              </button>
+              <button type="button" onClick={() => void openServiceFile(`${API_BASE}/api/v1/jobs/${job.id}/report`)} className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent">
+                <Download className="size-3.5" /> گزارش تجمیعی (JSON)
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {Object.entries(job.artifacts)
               .filter(([, artifact]) => artifact.url !== output?.url)
               .map(([key, artifact]) => (
-                <a
+                <button
                   key={key}
-                  href={artifactUrl(artifact)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  type="button"
+                  onClick={() => void openServiceFile(artifactUrl(artifact))}
                   className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent"
                 >
                   <Download className="size-3.5" /> {artifact.filename}
-                </a>
+                </button>
               ))}
           </div>
         </div>
@@ -947,9 +970,16 @@ function useJobLive(job: AnalyticsJob, enabled: boolean) {
   }, [job.live])
   useEffect(() => {
     if (!enabled || !['queued', 'running', 'cancelling'].includes(job.status)) return
-    const source = new EventSource(`${API_BASE}/api/v1/jobs/${job.id}/events`)
+    let source: EventSource | null = null
+    let cancelled = false
+    let retryTimer: number | undefined
+    let retries = 0
+    let lastEventId = 0
+    const eventTypes = ['job_started', 'preview_updated', 'metrics_updated', 'progress_updated', 'warning', 'job_completed', 'job_failed', 'job_cancelled']
     const receive = (raw: Event) => {
       const message = raw as MessageEvent<string>
+      const eventId = Number(message.lastEventId)
+      if (Number.isFinite(eventId) && eventId > lastEventId) lastEventId = eventId
       try {
         const next = JSON.parse(message.data) as LiveEvent
         setLive(previous => ({
@@ -959,16 +989,35 @@ function useJobLive(job: AnalyticsJob, enabled: boolean) {
         }))
         setHistory(previous => appendHistory(previous, next.metrics))
         if (['job_completed', 'job_failed', 'job_cancelled'].includes(next.type)) {
-          source.close()
+          source?.close()
           queryClient.invalidateQueries({ queryKey: ['video-analytics-jobs'] })
         }
       } catch {}
     }
-    const eventTypes = ['job_started', 'preview_updated', 'metrics_updated', 'progress_updated', 'warning', 'job_completed', 'job_failed', 'job_cancelled']
-    eventTypes.forEach(type => source.addEventListener(type, receive))
-    source.onopen = () => setConnected(true)
-    source.onerror = () => setConnected(false)
-    return () => source.close()
+    const open = async (freshToken: boolean) => {
+      const token = await getServiceToken(freshToken)
+      if (cancelled) return
+      const url = `${API_BASE}/api/v1/jobs/${job.id}/events${lastEventId ? `?after=${lastEventId}` : ''}`
+      source = new EventSource(appendAccessToken(url, token))
+      eventTypes.forEach(type => source!.addEventListener(type, receive))
+      source.onopen = () => { retries = 0; setConnected(true) }
+      source.onerror = () => {
+        setConnected(false)
+        // The browser reconnects by itself unless the server refused the request
+        // (for example an expired token). Then retry a few times with a new token;
+        // polling keeps the card up to date meanwhile.
+        if (source?.readyState === EventSource.CLOSED && !cancelled && retries < 5) {
+          retries += 1
+          retryTimer = window.setTimeout(() => void open(true), 3_000)
+        }
+      }
+    }
+    void open(false)
+    return () => {
+      cancelled = true
+      window.clearTimeout(retryTimer)
+      source?.close()
+    }
   }, [enabled, job.id, job.status, queryClient])
   return { live, history, connected }
 }

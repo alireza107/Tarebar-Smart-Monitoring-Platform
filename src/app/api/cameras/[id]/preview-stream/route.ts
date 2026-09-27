@@ -4,6 +4,7 @@ import { forbidden, notFound, serverError, unauthorized } from '@/lib/api-respon
 import { checkPermission, PermissionError } from '@/lib/permissions'
 import { assertCameraScope, ScopeError } from '@/lib/scope-guard'
 import { logger } from '@/lib/logger'
+import { serviceAuthHeaders } from '@/lib/service-token'
 import { cameraService } from '@/modules/camera/service'
 import { deriveAnalyticsRtspUrl } from '@/modules/camera/stream'
 import type { Role } from '@/lib/permissions'
@@ -37,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     ).replace(/\/+$/, '')
     const response = await fetch(`${analyticsBase}/api/v1/preview-stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...serviceAuthHeaders(session.user) },
       body: JSON.stringify({ stream_url: deriveAnalyticsRtspUrl(camera.streamUrl) }),
       cache: 'no-store',
     })

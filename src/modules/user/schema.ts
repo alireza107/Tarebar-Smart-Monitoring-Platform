@@ -26,6 +26,15 @@ export const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   fieldId: z.string().optional(),
   marketId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // Changing the role replaces the user's scope, so the new scope must be given
+  // in the same request. Updates that leave the role untouched are unaffected.
+  if (data.role === 'FIELD_MANAGER' && !data.fieldId) {
+    ctx.addIssue({ code: 'custom', path: ['fieldId'], message: 'انتخاب میدان الزامی است' })
+  }
+  if (data.role === 'MARKET_MANAGER' && !data.marketId) {
+    ctx.addIssue({ code: 'custom', path: ['marketId'], message: 'انتخاب بازار الزامی است' })
+  }
 })
 
 export type CreateUserDto = z.infer<typeof createUserSchema>

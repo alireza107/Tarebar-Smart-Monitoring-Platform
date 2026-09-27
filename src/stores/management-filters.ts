@@ -1,15 +1,11 @@
 import { create } from 'zustand'
+import { addDays, businessDate } from '@/lib/dates'
 import type { ManagementFilters, ManagementLocationType, ManagementPlaceType } from '@/modules/management-analytics/types'
 
-function formatDate(date: Date) {
-  return date.toISOString().slice(0, 10)
-}
-
 function initialDates() {
-  const to = new Date()
-  const from = new Date(to)
-  from.setDate(to.getDate() - 6)
-  return { from: formatDate(from), to: formatDate(to) }
+  // "Today" is the business day in Tehran, not the UTC date.
+  const to = businessDate()
+  return { from: addDays(to, -6), to }
 }
 
 interface ManagementFilterStore extends ManagementFilters {
