@@ -99,7 +99,7 @@ export function QualityReportClient({ id }: { id: string }) {
       </ReportSection>}
 
       <footer className="border-t border-slate-200 pt-3 text-[11px] leading-5 text-slate-500">
-        <p>مدل: <span dir="ltr">{data.modelName ?? 'Qwen2.5-VL'}</span> · {faNumber(data.frameCount)} فریم · زمان استنتاج {faNumber(data.inferenceSeconds, 1)} ثانیه · سطح تحلیل: {data.detailLevel === 'detailed' ? 'تفصیلی' : 'خلاصه'}</p>
+        <p>مدل: <span dir="ltr">{data.modelName ?? 'Qwen3-VL-2B'}</span> · {faNumber(data.frameCount)} فریم · زمان استنتاج {faNumber(data.inferenceSeconds, 1)} ثانیه · سطح تحلیل: {data.detailLevel === 'detailed' ? 'تفصیلی' : 'خلاصه'}</p>
         <p>این ارزیابی فقط بر پایه شواهد ظاهری تصویر انجام شده و جایگزین آزمون کیفیت، طعم یا ایمنی غذایی نیست.</p>
       </footer>
     </ReportSheet>

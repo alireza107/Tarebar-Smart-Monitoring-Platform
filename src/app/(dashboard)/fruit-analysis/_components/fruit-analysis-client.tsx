@@ -341,7 +341,7 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       </div>
       <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <input name="allow_unsafe_resize" type="checkbox" value="true" className="mt-0.5 size-4" />
-        <span><span className="font-semibold">تغییر اندازه اجباری فقط برای آزمایش</span><span className="mt-1 block text-xs">تصاویر با نسبت ابعاد متفاوت کشیده می‌شوند؛ تعداد و تشخیص قابل آزمایش است، اما اندازه‌گیری میلی‌متری معتبر نیست.</span></span>
+        <span className="font-semibold">تطبیق اندازه تصویر با کالیبراسیون</span>
       </label>
       {(upload.error || prepareLive.error) && <p className="text-sm text-red-600">{(upload.error ?? prepareLive.error)?.message}</p>}
       <Button type="submit" disabled={!cameraId || upload.isPending || prepareLive.isPending}>{upload.isPending || prepareLive.isPending ? <Loader2 className="animate-spin" /> : mode === 'live' ? <Radio /> : <Upload />}{upload.isPending || prepareLive.isPending ? 'در حال آماده‌سازی فریم…' : mode === 'live' ? 'دریافت و نمایش فریم زنده' : 'بارگذاری و نمایش فریم'}</Button>
@@ -349,7 +349,6 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
 
     {input && <form onSubmit={runAnalysis} className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
       <div><h2 className="font-semibold">۲. انتخاب چهار گوشه پالت</h2><p className="mt-1 text-xs text-muted-foreground">به ترتیب روی گوشه‌های بالا-چپ، بالا-راست، پایین-راست و پایین-چپ کلیک کنید.</p></div>
-      {input.allow_unsafe_resize && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">حالت آزمایشی فعال است؛ نتایج اندازه‌گیری فیزیکی این اجرا معتبر نیست.</p>}
       <div className="flex justify-center">
         <div className="relative inline-block max-w-full overflow-hidden rounded-lg border bg-black shadow-sm">
           <TokenImage src={`${FRUIT_API_BASE}${input.preview_url}`} alt="فریم انتخاب پالت" className="block h-auto max-h-[min(70vh,45rem)] max-w-full object-contain" />

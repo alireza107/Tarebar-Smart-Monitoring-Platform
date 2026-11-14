@@ -64,7 +64,7 @@ export function QualityResultView({ result, context }: { result: FruitQualityRes
     {open && <div className="space-y-5 border-t pt-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <Metric label="زمان استنتاج" value={`${fa(result.inference_seconds, 1)} ثانیه`} />
-        <Metric label="مدل" value={result.model ?? 'Qwen2.5-VL'} ltr />
+        <Metric label="مدل" value={result.model ?? 'Qwen3-VL-2B'} ltr />
       </div>
 
       {result.recommendation_fa && <Block title="توصیه"><p className="text-sm leading-7">{result.recommendation_fa}</p></Block>}

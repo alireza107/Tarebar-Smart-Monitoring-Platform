@@ -338,7 +338,7 @@ model AuditLog {
 // denormalised at write time (booth → market → field), which keeps report
 // queries to a single indexed lookup per level.
 
-// One visual freshness assessment (Qwen2.5-VL) of a fruit image, video or stream.
+// One visual freshness assessment (Qwen3-VL) of a fruit image, video or stream.
 model FruitQualityAssessment {
   id                 String         @id @default(cuid())
   source             AnalysisSource
