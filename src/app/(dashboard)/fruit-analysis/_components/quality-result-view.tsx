@@ -112,7 +112,6 @@ export function QualityResultView({ result, context }: { result: FruitQualityRes
       />
     )}
 
-    {result.summary_fa && <p className="rounded-lg border bg-muted/20 p-3 text-sm leading-7">{result.summary_fa}</p>}
     {result.verdict_fa && <p className="rounded-lg border bg-muted/30 p-3 text-sm font-medium leading-7">{result.verdict_fa}</p>}
     {!!result.quality_profile?.length && <QualityProfile aspects={result.quality_profile} />}
 
