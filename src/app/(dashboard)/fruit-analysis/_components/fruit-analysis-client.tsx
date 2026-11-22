@@ -213,10 +213,8 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       const countingHeight = countingFrame?.image_height ?? input?.height ?? null
 
       // Step 2 of sequential GPU plan: ensure fruit-pipeline releases SAM GPU memory before Qwen loads.
-      if (activeCounting) {
-        setSequentialStepMessage('در حال آزادسازی حافظه GPU سرویس شمارش (SAM)…')
-        await fruitApiJson('/api/v1/gpu/release', { method: 'POST' }).catch(() => null)
-      }
+      setSequentialStepMessage('در حال آزادسازی حافظه GPU سرویس شمارش (SAM)…')
+      await fruitApiJson('/api/v1/gpu/release', { method: 'POST' }).catch(() => null)
 
       if (mode === 'recorded') {
         let mediaToUpload: File | null = qualityFile
@@ -258,7 +256,9 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
           data.set('evaluate_per_fruit', String(evaluatePerFruit))
         }
         const response = await videoAnalyticsApiJson<{ data: FruitQualityResult }>('/api/v1/fruit-quality', { method: 'POST', body: data })
-        setSequentialStepMessage(null)
+        // Release Qwen GPU memory after quality evaluation so the next SAM counting job has full VRAM.
+      await videoAnalyticsApiJson('/api/v1/gpu/release', { method: 'POST' }).catch(() => null)
+      setSequentialStepMessage(null)
         // Keep the assessment: it feeds the exports and the location's executive report.
         const [locationType, locationId] = qualityLocation ? qualityLocation.split(':') : []
         const stored = await appJson<{ data: { id: string } }>('/api/fruit-quality-assessments', {
@@ -292,6 +292,8 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
           evaluatePerFruit,
         }),
       })
+      // Release Qwen GPU memory after quality evaluation so the next SAM counting job has full VRAM.
+      await videoAnalyticsApiJson('/api/v1/gpu/release', { method: 'POST' }).catch(() => null)
       setSequentialStepMessage(null)
       const cameraName = liveCameras.find(camera => camera.id === qualityCameraId)?.name ?? ''
       let livePreviewUrl: string | null = null
@@ -358,7 +360,7 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
     const data = new FormData(event.currentTarget)
     const customPallet = palletType === 'custom'
     const legacyMaxFrames = data.get('max_frames')
-    start.mutate({
+    const payload = {
       input_id: input.id,
       camera_id: cameraId,
       corners: points,
@@ -375,7 +377,11 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       resize_to_calibration: true,
       allow_unsafe_resize: input.allow_unsafe_resize,
       estimate_from_masks: input.allow_unsafe_resize,
-    })
+    }
+    // Release Qwen GPU memory before starting SAM counting so both fit in a 6 GB GPU.
+    void videoAnalyticsApiJson('/api/v1/gpu/release', { method: 'POST' })
+      .catch(() => null)
+      .then(() => start.mutate(payload))
   }
 
   const currentJob = job.data?.data
