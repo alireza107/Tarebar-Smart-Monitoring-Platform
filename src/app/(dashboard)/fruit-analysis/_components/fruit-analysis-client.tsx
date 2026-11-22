@@ -343,7 +343,7 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       </div>
       <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <input name="allow_unsafe_resize" type="checkbox" value="true" className="mt-0.5 size-4" />
-        <span><span className="font-semibold">تطبیق اندازه تصویر با کالیبراسیون</span><span className="mt-1 block text-xs font-normal">در صورت نبود کالیبراسیون دقیق، اندازه‌ها به‌صورت تخمینی و متناسب با ماسک هر میوه محاسبه می‌شوند.</span></span>
+        <span className="font-semibold">تطبیق اندازه تصویر با کالیبراسیون</span>
       </label>
       {(upload.error || prepareLive.error) && <p className="text-sm text-red-600">{(upload.error ?? prepareLive.error)?.message}</p>}
       <Button type="submit" disabled={!cameraId || upload.isPending || prepareLive.isPending}>{upload.isPending || prepareLive.isPending ? <Loader2 className="animate-spin" /> : mode === 'live' ? <Radio /> : <Upload />}{upload.isPending || prepareLive.isPending ? 'در حال آماده‌سازی فریم…' : mode === 'live' ? 'دریافت و نمایش فریم زنده' : 'بارگذاری و نمایش فریم'}</Button>
@@ -605,7 +605,6 @@ function ResultView({ result, jobId }: { result: FruitResult; jobId: string }) {
         <Button type="button" size="sm" variant="outline" onClick={() => downloadJson(`fruit-measurement-${fileStamp()}.json`, { jobId, exportedAt: new Date().toISOString(), result })}><FileJson />JSON</Button>
       </div>
     </div>
-    {result.measurement_mode === 'estimated' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-900">این اندازه‌ها از نسبت مساحت و شکل ماسک‌های میوه و بازه متعارف میوه‌های گرد تخمین زده شده‌اند و اندازه‌گیری فیزیکی کالیبره‌شده نیستند.</p>}
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Metric label="تعداد میوه" value={result.total_fruit_observations.toLocaleString('fa-IR')} />
       <Metric label="میانگین عرض" value={average ? `${average.width.toFixed(1)} mm` : '—'} />
