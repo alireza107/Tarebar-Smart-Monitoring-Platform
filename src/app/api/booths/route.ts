@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { unauthorized, forbidden, validationError, serverError } from '@/lib/api-responses'
+import { unauthorized, forbidden, validationError, serverError, conflict } from '@/lib/api-responses'
+import { isUniqueViolation } from '@/lib/prisma-errors'
 import { checkPermission, PermissionError, type Role } from '@/lib/permissions'
 import { assertMarketScope, ScopeError } from '@/lib/scope-guard'
 import { boothService } from '@/modules/booth/service'
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: booth }, { status: 201 })
   } catch (e) {
     if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
+    if (isUniqueViolation(e)) return conflict('غرفه‌ای با این شماره در این بازار وجود دارد')
     return serverError()
   }
 }

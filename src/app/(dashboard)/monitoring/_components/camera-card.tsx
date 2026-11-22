@@ -10,7 +10,6 @@ import {
   Flame,
   MapPin,
   ExternalLink,
-  ScanSearch,
   Users,
   VideoOff,
   Play,
@@ -66,12 +65,6 @@ interface CameraCardProps {
 }
 
 const LIVE_ANALYTICS = [
-  {
-    id: 'detection',
-    label: 'تشخیص افراد',
-    description: 'تشخیص افراد و نمایش کادر دور هر فرد',
-    icon: ScanSearch,
-  },
   {
     id: 'tracking',
     label: 'ردیابی افراد',
@@ -324,7 +317,7 @@ export function CameraCard({ camera }: CameraCardProps) {
                 <BrainCircuit />
                 {startAnalytics.isPending ? 'در حال اتصال…' : 'فعال‌سازی تحلیل انتخاب‌شده'}
               </Button>
-              <Button type="button" variant="outline" render={<Link href="/live-analytics" />}>
+              <Button type="button" variant="outline" render={<Link href="/live-analytics/people" />}>
                 مشاهده خروجی‌ها
               </Button>
             </DialogFooter>

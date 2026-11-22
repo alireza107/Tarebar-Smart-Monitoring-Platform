@@ -16,10 +16,10 @@ RTSP/IP camera ───────┘                  └─> WebRTC ─> mon
 From `Tarebar-Smart-Monitoring-Platform`:
 
 ```bash
-cp .env.example .env
+cp .env.dev .env.dev.local  # optional; edit .env.dev in place for LAN IPs
 # Set AUTH_SECRET. For LAN access, also set the three MediaMTX host values below.
-docker compose up -d --build
-docker compose exec app npx prisma migrate deploy
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
+docker compose -f docker-compose.dev.yml --env-file .env.dev exec app npx prisma db seed
 ```
 
 When the dashboard is opened from another computer or phone, replace
@@ -31,8 +31,9 @@ NEXT_PUBLIC_MEDIAMTX_HLS_URL=http://192.168.1.20:8888
 MEDIAMTX_WEBRTC_HOST=192.168.1.20
 ```
 
-These `NEXT_PUBLIC_` values are embedded during the Next.js Docker build. Run
-`docker compose up -d --build app mediamtx` after changing them.
+These `NEXT_PUBLIC_` values are read at runtime in the development container
+(`next dev`). Restart `app` after changing them. Production images bake the
+same variables in at `next build`; a new frontend image is required.
 
 ## Larix Broadcaster setup
 

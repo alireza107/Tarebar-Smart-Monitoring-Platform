@@ -15,13 +15,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (!session) return unauthorized()
     checkPermission(session, 'camera', 'read')
     const { id } = await params
+    const owner = await cameraService.getById(id)
+    if (!owner) return notFound()
+    await assertCameraScope(session.user.id, session.user.role as Role, owner)
     const camera = await cameraService.getSnapshot(id)
     if (!camera) return notFound()
     return NextResponse.json({
       data: { dataUrl: camera.snapshotDataUrl, updatedAt: camera.snapshotUpdatedAt },
     })
   } catch (e) {
-    if (e instanceof PermissionError) return forbidden()
+    if (e instanceof PermissionError || e instanceof ScopeError) return forbidden()
     return serverError()
   }
 }

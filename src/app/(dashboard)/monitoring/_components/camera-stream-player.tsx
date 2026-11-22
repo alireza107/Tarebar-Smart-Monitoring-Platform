@@ -13,6 +13,8 @@ interface CameraStreamPlayerProps {
   chrome?: boolean
   /** Notified whenever the connection state changes, e.g. to drive a fallback background. */
   onStateChange?: (state: PlayerState) => void
+  /** Exposes the WebRTC stream to workflows such as browser-side calibration recording. */
+  onMediaStreamChange?: (stream: MediaStream | null) => void
 }
 
 export type PlayerState = 'connecting' | 'webrtc' | 'hls' | 'error'
@@ -35,7 +37,13 @@ function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
  * WebRTC-first MediaMTX player with bounded reconnects and an HLS fallback.
  * WHEP is negotiated directly so player errors are visible to the dashboard.
  */
-export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true, onStateChange }: CameraStreamPlayerProps) {
+export function CameraStreamPlayer({
+  whepSrc,
+  hlsSrc,
+  chrome = true,
+  onStateChange,
+  onMediaStreamChange,
+}: CameraStreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [state, setState] = useState<PlayerState>('connecting')
   const [attempt, setAttempt] = useState(0)
@@ -70,6 +78,7 @@ export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true, onStateChan
       if (!active) return
       cleanupWebRtc()
       video.srcObject = null
+      onMediaStreamChange?.(null)
       setState('connecting')
 
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -111,7 +120,9 @@ export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true, onStateChan
       peer.ontrack = (event) => {
         const currentVideo = videoRef.current
         if (!active || !currentVideo) return
-        currentVideo.srcObject = event.streams[0]
+        const stream = event.streams[0]
+        currentVideo.srcObject = stream
+        onMediaStreamChange?.(stream)
         currentVideo.play().catch(() => undefined)
         setState('webrtc')
       }
@@ -156,10 +167,11 @@ export function CameraStreamPlayer({ whepSrc, hlsSrc, chrome = true, onStateChan
       video.onloadeddata = null
       video.onerror = null
       video.srcObject = null
+      onMediaStreamChange?.(null)
       video.removeAttribute('src')
       video.load()
     }
-  }, [attempt, hlsSrc, retry, whepSrc])
+  }, [attempt, hlsSrc, onMediaStreamChange, retry, whepSrc])
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-slate-950">

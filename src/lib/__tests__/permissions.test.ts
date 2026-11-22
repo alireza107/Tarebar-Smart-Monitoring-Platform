@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasPermission, checkPermission, PermissionError } from '../permissions'
+import { hasPermission, checkPermission, PermissionError, type Role } from '../permissions'
 import type { Session } from 'next-auth'
 
 // ---------------------------------------------------------------------------
@@ -7,7 +7,7 @@ import type { Session } from 'next-auth'
 // ---------------------------------------------------------------------------
 
 describe('hasPermission — ORG_ADMIN', () => {
-  const resources = ['field', 'market', 'booth', 'booth_category', 'user', 'camera', 'report'] as const
+  const resources = ['field', 'market', 'booth', 'booth_category', 'user', 'camera', 'report', 'region'] as const
   const actions   = ['create', 'read', 'update', 'delete'] as const
 
   it('has full CRUD on every resource', () => {
@@ -121,7 +121,7 @@ describe('hasPermission — MARKET_MANAGER', () => {
 // ---------------------------------------------------------------------------
 
 describe('checkPermission', () => {
-  const makeSession = (role: string): Session => ({
+  const makeSession = (role: Role): Session => ({
     user: { id: 'u1', role, name: 'Test User', email: 'test@example.com' },
     expires: '9999-01-01T00:00:00.000Z',
   })

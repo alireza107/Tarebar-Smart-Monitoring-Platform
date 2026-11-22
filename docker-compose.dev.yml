@@ -1,0 +1,181 @@
+# Local development stack. Builds frontend, people analytics, and fruit analytics from source.
+# Developers do not need GHCR access.
+#
+# Expected sibling layout:
+#   parent/
+#     Tarebar-Smart-Monitoring-Platform/   ← this repository
+#     video_analytics/                     ← AI repository
+#     fruit-pipeline/                      ← fruit calibration/analysis repository
+#
+#   docker compose -f docker-compose.dev.yml up
+#
+# `docker compose up` still works via docker-compose.yml, which includes this file.
+
+name: tarebar-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tarebar}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tarebar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: tarebar-frontend:dev
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    env_file:
+      - .env.dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: ${APP_DATABASE_URL:-postgresql://postgres:postgres@db:5432/tarebar}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL: ${NEXT_PUBLIC_VIDEO_ANALYTICS_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_FRUIT_PIPELINE_API_URL: ${NEXT_PUBLIC_FRUIT_PIPELINE_API_URL:-http://localhost:8010}
+      NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL: ${NEXT_PUBLIC_MEDIAMTX_WEBRTC_URL:-http://localhost:8889}
+      NEXT_PUBLIC_MEDIAMTX_HLS_URL: ${NEXT_PUBLIC_MEDIAMTX_HLS_URL:-http://localhost:8888}
+      MEDIAMTX_RTSP_URL: ${MEDIAMTX_INTERNAL_RTSP_URL:-rtsp://mediamtx:8554}
+      MEDIAMTX_API_URL: ${MEDIAMTX_INTERNAL_API_URL:-http://mediamtx:9997}
+      VIDEO_ANALYTICS_API_URL: ${VIDEO_ANALYTICS_INTERNAL_API_URL:-http://video-analytics:8000}
+      FRUIT_PIPELINE_API_URL: ${FRUIT_PIPELINE_INTERNAL_API_URL:-http://fruit-pipeline:8010}
+      FRUIT_PIPELINE_LEGACY_DASHBOARD: ${FRUIT_PIPELINE_LEGACY_DASHBOARD:-false}
+      ANALYTICS_READ_KEY: ${ANALYTICS_READ_KEY:-local-read-key-change-me}
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    depends_on:
+      db:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+      video-analytics:
+        condition: service_started
+      fruit-pipeline:
+        condition: service_started
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.18.2
+    restart: unless-stopped
+    ports:
+      - "1935:1935"       # RTMP ingest (Larix)
+      - "8554:8554"       # RTSP ingest/read (CV pipeline)
+      - "8888:8888"       # Low-latency HLS fallback
+      - "8889:8889"       # WebRTC HTTP/WHEP signaling
+      - "8189:8189/udp"   # WebRTC ICE media
+      - "127.0.0.1:9997:9997" # Control API; backend uses the Docker network
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${MEDIAMTX_WEBRTC_HOST:-localhost}
+    volumes:
+      - ./infrastructure/mediamtx.yml:/mediamtx.yml:ro
+
+  video-analytics:
+    build:
+      context: ${VIDEO_ANALYTICS_CONTEXT:-../video_analytics}
+    image: video-analytics-mvp:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${VIDEO_ANALYTICS_PORT:-8000}:8000"
+    env_file:
+      - .env.dev
+    environment:
+      VIDEO_ANALYTICS_CORS_ORIGINS: ${VIDEO_ANALYTICS_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      VIDEO_ANALYTICS_JOB_WORKERS: ${VIDEO_ANALYTICS_JOB_WORKERS:-2}
+      VIDEO_ANALYTICS_PROCESSING_WIDTH: ${VIDEO_ANALYTICS_PROCESSING_WIDTH:-1280}
+      VIDEO_ANALYTICS_FRAME_STRIDE: ${VIDEO_ANALYTICS_FRAME_STRIDE:-10}
+      VIDEO_ANALYTICS_FLEET_ENABLED: ${VIDEO_ANALYTICS_FLEET_ENABLED:-true}
+      VIDEO_ANALYTICS_FLEET_FPS: ${VIDEO_ANALYTICS_FLEET_FPS:-0.5}
+      VIDEO_ANALYTICS_FLEET_MAX_CAMERAS: ${VIDEO_ANALYTICS_FLEET_MAX_CAMERAS:-32}
+      VIDEO_ANALYTICS_FLEET_REFRESH_SECONDS: ${VIDEO_ANALYTICS_FLEET_REFRESH_SECONDS:-30}
+      VIDEO_ANALYTICS_TRACKER: ${VIDEO_ANALYTICS_TRACKER:-stabletrack}
+      VIDEO_ANALYTICS_MAX_UPLOAD_BYTES: ${VIDEO_ANALYTICS_MAX_UPLOAD_BYTES:-1073741824}
+      VIDEO_ANALYTICS_LOG_LEVEL: ${VIDEO_ANALYTICS_LOG_LEVEL:-INFO}
+      VIDEO_INSIGHT_MODEL_PATH: /models/${VIDEO_INSIGHT_MODEL_DIRNAME:-Qwen2.5-VL-3B-Instruct}
+      VIDEO_INSIGHT_LIVE_SAMPLE_INTERVAL_SECONDS: ${VIDEO_INSIGHT_LIVE_SAMPLE_INTERVAL_SECONDS:-0.75}
+      VIDEO_INSIGHT_PRELOAD: ${VIDEO_INSIGHT_PRELOAD:-true}
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
+      MEDIAMTX_RTSP_URL: ${MEDIAMTX_INTERNAL_RTSP_URL:-rtsp://mediamtx:8554}
+      DATABASE_URL: ${APP_DATABASE_URL:-postgresql://postgres:postgres@db:5432/tarebar}
+      ANALYTICS_DATABASE_URL: ${ANALYTICS_DATABASE_URL:-postgresql://postgres:postgres@db:5432/tarebar}
+      ANALYTICS_READ_KEY: ${ANALYTICS_READ_KEY:-local-read-key-change-me}
+      ANALYTICS_INGEST_KEY: ${ANALYTICS_INGEST_KEY:-local-ingest-key-change-me}
+      VIDEO_ANALYTICS_INGEST_URL: ${VIDEO_ANALYTICS_INGEST_URL:-http://127.0.0.1:8000/api/v1/ingest/minutes}
+      ANALYTICS_OUTBOX_DIR: ${ANALYTICS_OUTBOX_DIR:-/app/output/outbox}
+      ANALYTICS_EXPECTED_SAMPLES_PER_MINUTE: ${ANALYTICS_EXPECTED_SAMPLES_PER_MINUTE:-30}
+      ANALYTICS_PUBLISH_INTERVAL_SECONDS: ${ANALYTICS_PUBLISH_INTERVAL_SECONDS:-10}
+      ANALYTICS_ROLLUP_INTERVAL_SECONDS: ${ANALYTICS_ROLLUP_INTERVAL_SECONDS:-15}
+      VIDEO_ANALYTICS_SPATIAL_PUBLISH_SECONDS: ${VIDEO_ANALYTICS_SPATIAL_PUBLISH_SECONDS:-30}
+      ANALYTICS_TIMEZONE: ${ANALYTICS_TIMEZONE:-Asia/Tehran}
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "app.api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
+    volumes:
+      - ${VIDEO_ANALYTICS_CONTEXT:-../video_analytics}/app:/app/app
+      - ${VIDEO_ANALYTICS_CONTEXT:-../video_analytics}/configs:/app/configs
+      - analytics-jobs:/app/output/dashboard
+      - analytics-outbox:/app/output/outbox
+      - ${VIDEO_INSIGHT_MODELS_DIR:-../tarebar-deployment/models}:/models:ro
+      - ${VIDEO_ANALYTICS_CONTEXT:-../video_analytics}/outputs/synthetic:/app/outputs/synthetic:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+
+  fruit-pipeline:
+    build:
+      context: ${FRUIT_PIPELINE_CONTEXT:-../fruit-pipeline}
+    image: fruit-pipeline:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${FRUIT_PIPELINE_PORT:-8010}:8010"
+    environment:
+      FRUIT_PIPELINE_CORS_ORIGINS: ${FRUIT_PIPELINE_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      FRUIT_PIPELINE_JOB_WORKERS: ${FRUIT_PIPELINE_JOB_WORKERS:-1}
+      FRUIT_PIPELINE_MAX_UPLOAD_BYTES: ${FRUIT_PIPELINE_MAX_UPLOAD_BYTES:-1073741824}
+      FRUIT_PIPELINE_DEVICE: ${FRUIT_PIPELINE_DEVICE:-cpu}
+      FRUIT_PIPELINE_DETECTOR_WEIGHTS: /models/yolo11x.pt
+      FRUIT_PIPELINE_SAM_CHECKPOINT: /models/sam_vit_l_0b3195.pth
+      SERVICE_AUTH_SECRET: ${SERVICE_AUTH_SECRET:-}
+    volumes:
+      - fruit-pipeline-data:/app/output/dashboard
+      - ${FRUIT_PIPELINE_MODELS_DIR:-../fruit-pipeline/models}:/models:ro
+
+volumes:
+  pgdata:
+  analytics-jobs:
+  analytics-outbox:
+  fruit-pipeline-data:
+  frontend_node_modules:
+  frontend_next:

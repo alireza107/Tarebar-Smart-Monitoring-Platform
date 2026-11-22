@@ -15,6 +15,7 @@ vi.mock('../repository', () => ({
     create:         vi.fn(),
     update:         vi.fn(),
     softDelete:     vi.fn(),
+    replaceScope:   vi.fn(),
   },
 }))
 
@@ -29,12 +30,14 @@ const mockUser = {
   id:        'u1',
   username:  'testuser',
   name:      'کاربر آزمایشی',
+  email:     null,
   password:  'hashed:Secret@123',
   role:      'FIELD_MANAGER' as const,
   isActive:  true,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
+  scopes:    [],
 }
 
 beforeEach(() => {
@@ -69,7 +72,7 @@ describe('userService.create', () => {
     repo.findByUsername.mockResolvedValue(null)
     repo.create.mockResolvedValue(mockUser)
 
-    await userService.create({ username: 'testuser', name: 'کاربر', password: 'Secret@123', role: 'FIELD_MANAGER' })
+    await userService.create({ username: 'testuser', name: 'کاربر', password: 'Secret@123', role: 'FIELD_MANAGER', isActive: true })
 
     expect(mockBcrypt.hash).toHaveBeenCalledWith('Secret@123', 10)
     expect(repo.create).toHaveBeenCalledWith(
@@ -81,7 +84,7 @@ describe('userService.create', () => {
     repo.findByUsername.mockResolvedValue(null)
     repo.create.mockResolvedValue(mockUser)
 
-    await userService.create({ username: 'testuser', name: 'کاربر', password: 'Secret@123', role: 'FIELD_MANAGER' })
+    await userService.create({ username: 'testuser', name: 'کاربر', password: 'Secret@123', role: 'FIELD_MANAGER', isActive: true })
 
     const callArg = repo.create.mock.calls[0][0] as Record<string, unknown>
     expect(callArg.password).not.toBe('Secret@123')
@@ -91,7 +94,7 @@ describe('userService.create', () => {
     repo.findByUsername.mockResolvedValue(mockUser)
 
     await expect(
-      userService.create({ username: 'testuser', name: 'دیگری', password: 'Pass@1234', role: 'MARKET_MANAGER' }),
+      userService.create({ username: 'testuser', name: 'دیگری', password: 'Pass@1234', role: 'MARKET_MANAGER', isActive: true }),
     ).rejects.toThrow(UsernameConflictError)
 
     expect(repo.create).not.toHaveBeenCalled()

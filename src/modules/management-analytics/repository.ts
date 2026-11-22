@@ -123,13 +123,54 @@ export const managementAnalyticsRepository = {
     }
   },
 
+  /**
+   * The location a request is really about. "organization" is global only for
+   * ORG_ADMIN; for a manager it means "my field" / "my market", otherwise the
+   * analytics service would answer with organisation-wide numbers. Returns null
+   * when a manager has no assigned scope or names a location outside of it.
+   */
+  async narrowToScope(
+    userId: string,
+    role: Role,
+    type: ManagementLocationType,
+    id?: string,
+  ): Promise<{ locationType: ManagementLocationType; locationId?: string } | null> {
+    if (type !== 'organization') {
+      return (await this.canAccessLocation(userId, role, type, id)) ? { locationType: type, locationId: id } : null
+    }
+    if (role === 'ORG_ADMIN') return { locationType: 'organization' }
+    const scope = await resolveScope(userId, role)
+    const fieldId = scope.fieldIds?.[0]
+    const marketId = scope.marketIds?.[0]
+    if (role === 'FIELD_MANAGER' && fieldId) return { locationType: 'field', locationId: fieldId }
+    if (role === 'MARKET_MANAGER' && marketId) return { locationType: 'market', locationId: marketId }
+    return null
+  },
+
   async canAccessLocation(userId: string, role: Role, type: ManagementLocationType, id?: string) {
     // "organization" means the caller's complete authorized scope. It is global
     // only for ORG_ADMIN and automatically narrowed by getLocationHierarchy for managers.
     if (type === 'organization') return true
     if (!id) return false
-    const hierarchy = await this.getLocationHierarchy(userId, role)
-    const group = type === 'field' ? hierarchy.fields : type === 'market' ? hierarchy.markets : hierarchy.booths
-    return group.some((location) => location.id === id)
+
+    // Targeted lookups: this runs on every polled analytics request, so it must
+    // not rebuild the whole location hierarchy.
+    const scope = await resolveScope(userId, role)
+    if (type === 'field') {
+      if (role === 'MARKET_MANAGER') return false
+      if (scope.fieldIds && !scope.fieldIds.includes(id)) return false
+      return Boolean(await db.field.findFirst({ where: { id, deletedAt: null }, select: { id: true } }))
+    }
+
+    const market = type === 'market'
+      ? await db.market.findFirst({ where: { id, deletedAt: null }, select: { id: true, fieldId: true } })
+      : (await db.booth.findFirst({
+          where: { id, deletedAt: null, market: { deletedAt: null } },
+          select: { market: { select: { id: true, fieldId: true } } },
+        }))?.market
+    if (!market) return false
+    if (scope.marketIds) return scope.marketIds.includes(market.id)
+    if (scope.fieldIds) return scope.fieldIds.includes(market.fieldId)
+    return true
   },
 }

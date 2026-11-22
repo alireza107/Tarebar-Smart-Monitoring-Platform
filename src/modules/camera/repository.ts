@@ -27,7 +27,16 @@ export const cameraRepository = {
 
   findByFieldIds: (fieldIds: string[]) =>
     db.camera.findMany({
-      where: { fieldId: { in: fieldIds }, deletedAt: null },
+      // A camera belongs to a field directly, through its market, or through
+      // its booth's market.
+      where: {
+        deletedAt: null,
+        OR: [
+          { fieldId: { in: fieldIds } },
+          { market: { fieldId: { in: fieldIds } } },
+          { booth: { market: { fieldId: { in: fieldIds } } } },
+        ],
+      },
       include,
       omit: omitSnapshot,
       orderBy: { createdAt: 'desc' },
@@ -35,7 +44,13 @@ export const cameraRepository = {
 
   findByMarketIds: (marketIds: string[]) =>
     db.camera.findMany({
-      where: { marketId: { in: marketIds }, deletedAt: null },
+      where: {
+        deletedAt: null,
+        OR: [
+          { marketId: { in: marketIds } },
+          { booth: { marketId: { in: marketIds } } },
+        ],
+      },
       include,
       omit: omitSnapshot,
       orderBy: { createdAt: 'desc' },

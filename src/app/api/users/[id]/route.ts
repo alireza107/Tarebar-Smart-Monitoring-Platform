@@ -13,6 +13,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (!session) return unauthorized()
     checkPermission(session, 'user', 'read')
     const { id } = await params
+    if (session.user.role !== 'ORG_ADMIN' && id !== session.user.id) return forbidden()
     const user = await userService.getById(id)
     if (!user) return notFound()
     return NextResponse.json({ data: user })
