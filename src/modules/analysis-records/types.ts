@@ -130,6 +130,8 @@ export interface FruitQualityResult {
   quality_mode?: 'measured' | 'estimated' | null
   filter_outside_roi?: boolean | null
   pallet_polygon?: number[][] | null
+  roi_crop_box?: [number, number, number, number] | number[] | null
+  roi_crop_thumbnail?: string | null
   image_width?: number | null
   image_height?: number | null
   counting_job_id?: string | null

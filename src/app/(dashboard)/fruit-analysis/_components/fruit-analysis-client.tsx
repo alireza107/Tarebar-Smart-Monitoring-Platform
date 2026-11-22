@@ -437,14 +437,33 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       <div><h2 className="flex items-center gap-2 font-semibold"><Apple className="size-5 text-emerald-600" />ارزیابی کیفیت میوه</h2><p className="mt-1 text-xs text-muted-foreground">مدل فقط نشانه‌های قابل مشاهده را بررسی می‌کند؛ این نتیجه جایگزین آزمایش کیفیت یا ایمنی غذایی نیست.</p></div>
       {mode === 'recorded' ? <>
         <div className="space-y-2"><Label htmlFor="fruit-quality-file">تصویر یا ویدیوی میوه</Label><Input id="fruit-quality-file" type="file" accept="image/*,video/*,.mov,.mkv,.avi,.webm,.m4v" onChange={event => chooseQualityFile(event.target.files?.[0] ?? null)} /></div>
-        {qualityPreviewUrl && <div className="flex max-h-[32rem] justify-center overflow-hidden rounded-xl border bg-black">
-          {qualityFile?.type.startsWith('video/')
-            ? <video src={qualityPreviewUrl} controls muted playsInline className="max-h-[32rem] max-w-full object-contain" />
-            // Local object URLs do not use Next image optimization.
-            // eslint-disable-next-line @next/next/no-img-element
-            : <img src={qualityPreviewUrl} alt="پیش‌نمایش میوه" className="max-h-[32rem] max-w-full object-contain" />}
-        </div>}
-      </> : <div className="space-y-2"><Label htmlFor="fruit-quality-camera">دوربین زنده</Label><select id="fruit-quality-camera" value={qualityCameraId} onChange={event => setQualityCameraId(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{liveCameras.map(camera => <option key={camera.id} value={camera.id}>{camera.name}</option>)}</select>{!cameras.isLoading && liveCameras.length === 0 && <p className="text-sm text-amber-700">هیچ دوربین دارای استریمی در دسترس نیست.</p>}</div>}
+        {useCountingForQuality && measurementReport && input
+          ? <CountingRegionPreview
+              previewSrc={`${FRUIT_API_BASE}${input.preview_url}`}
+              width={measurementReport.result.frames[0]?.image_width ?? input.width}
+              height={measurementReport.result.frames[0]?.image_height ?? input.height}
+              polygon={measurementReport.result.frames[0]?.pallet_polygon ?? measurementReport.result.pallet_polygon ?? points.map(p => [p.x, p.y])}
+              fruitCount={measurementReport.result.total_fruit_observations}
+            />
+          : qualityPreviewUrl && <div className="flex max-h-[32rem] justify-center overflow-hidden rounded-xl border bg-black">
+              {qualityFile?.type.startsWith('video/')
+                ? <video src={qualityPreviewUrl} controls muted playsInline className="max-h-[32rem] max-w-full object-contain" />
+                // Local object URLs do not use Next image optimization.
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={qualityPreviewUrl} alt="پیش‌نمایش میوه" className="max-h-[32rem] max-w-full object-contain" />}
+            </div>}
+      </> : <>
+        <div className="space-y-2"><Label htmlFor="fruit-quality-camera">دوربین زنده</Label><select id="fruit-quality-camera" value={qualityCameraId} onChange={event => setQualityCameraId(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{liveCameras.map(camera => <option key={camera.id} value={camera.id}>{camera.name}</option>)}</select>{!cameras.isLoading && liveCameras.length === 0 && <p className="text-sm text-amber-700">هیچ دوربین دارای استریمی در دسترس نیست.</p>}</div>
+        {useCountingForQuality && measurementReport && input && (
+          <CountingRegionPreview
+            previewSrc={`${FRUIT_API_BASE}${input.preview_url}`}
+            width={measurementReport.result.frames[0]?.image_width ?? input.width}
+            height={measurementReport.result.frames[0]?.image_height ?? input.height}
+            polygon={measurementReport.result.frames[0]?.pallet_polygon ?? measurementReport.result.pallet_polygon ?? points.map(p => [p.x, p.y])}
+            fruitCount={measurementReport.result.total_fruit_observations}
+          />
+        )}
+      </>}
       <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={detailedQuality} onChange={event => setDetailedQuality(event.target.checked)} className="mt-1 size-4" /><span><span className="font-medium">تحلیل تفصیلی</span><span className="mt-0.5 block text-xs text-muted-foreground">عیوب، شاخص‌های آسیب و سطح، و بررسی فریم‌به‌فریم را هم گزارش می‌کند.</span></span></label>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={perFrameQuality} onChange={event => setPerFrameQuality(event.target.checked)} className="mt-1 size-4" /><span><span className="font-medium">امتیاز فریم‌به‌فریم</span><span className="mt-0.5 block text-xs text-muted-foreground">هر فریم جداگانه ارزیابی می‌شود؛ دقیق‌تر ولی چند برابر کندتر است.</span></span></label>
@@ -553,6 +572,102 @@ function TokenImage({ src, alt, className }: { src: string; alt: string; classNa
   // Pipeline artifacts are dynamic cross-origin URLs and cannot use next/image optimization.
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt={alt} className={className} />
+}
+
+/** Shows the full preview frame with the selected pallet polygon AND the cropped selected region side-by-side on the Quality tab. */
+function CountingRegionPreview({
+  previewSrc,
+  width,
+  height,
+  polygon,
+  fruitCount,
+}: {
+  previewSrc: string
+  width: number
+  height: number
+  polygon: number[][]
+  fruitCount: number
+}) {
+  const tokenizedUrl = useTokenizedUrl(previewSrc)
+  const xs = polygon.map(p => p[0])
+  const ys = polygon.map(p => p[1])
+  const minX = xs.length ? Math.max(0, Math.min(...xs)) : 0
+  const minY = ys.length ? Math.max(0, Math.min(...ys)) : 0
+  const maxX = xs.length ? Math.min(width, Math.max(...xs)) : width
+  const maxY = ys.length ? Math.min(height, Math.max(...ys)) : height
+  const cropW = Math.max(1, maxX - minX)
+  const cropH = Math.max(1, maxY - minY)
+
+  return <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <span className="font-semibold">پیش‌نمایش ناحیه برش‌خورده انتخابی از بخش شمارش ({fruitCount.toLocaleString('fa-IR')} میوه شمارش‌شده)</span>
+      <span className="text-muted-foreground">مدل کیفیت Qwen فقط روی این ناحیه برش‌خورده اجرا و نتیجه بین میوه‌ها مقیاس می‌شود</span>
+    </div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <figure className="flex flex-col items-center justify-between overflow-hidden rounded-lg border bg-black p-2">
+        <div className="relative inline-block max-w-full overflow-hidden">
+          <TokenImage src={previewSrc} alt="فریم شمارش و محدوده پالت" className="block h-auto max-h-64 max-w-full object-contain" />
+          {polygon.length >= 3 && (
+            <svg className="absolute inset-0 size-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+              <polygon
+                points={polygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
+                fill="rgba(16,185,129,0.18)"
+                stroke="#10b981"
+                strokeWidth={Math.max(3, width / 350)}
+              />
+              {polygon.slice(0, 4).map((pt, idx) => (
+                <g key={idx}>
+                  <circle cx={pt[0]} cy={pt[1]} r={Math.max(5, width / 140)} fill="#10b981" stroke="white" strokeWidth={1.5} />
+                  <text x={pt[0] + 8} y={pt[1] - 8} fill="white" stroke="black" strokeWidth={0.8} fontSize={Math.max(14, width / 55)} paintOrder="stroke">{CORNER_LABELS[idx]}</text>
+                </g>
+              ))}
+            </svg>
+          )}
+        </div>
+        <figcaption className="mt-2 text-[11px] text-emerald-200">فریم اصلی و چهارگوشه انتخاب‌شده پالت</figcaption>
+      </figure>
+      <figure className="flex flex-col items-center justify-between overflow-hidden rounded-lg border bg-black p-2">
+        {tokenizedUrl ? (
+          <svg className="block h-auto max-h-64 max-w-full" viewBox={`${minX} ${minY} ${cropW} ${cropH}`}>
+            <defs>
+              <clipPath id="counting-roi-clip">
+                <polygon points={polygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')} />
+              </clipPath>
+            </defs>
+            <image
+              href={tokenizedUrl}
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              opacity={0.22}
+              preserveAspectRatio="none"
+            />
+            <image
+              href={tokenizedUrl}
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              clipPath={polygon.length >= 3 ? 'url(#counting-roi-clip)' : undefined}
+              preserveAspectRatio="none"
+            />
+            {polygon.length >= 3 && (
+              <polygon
+                points={polygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
+                fill="none"
+                stroke="#0ea5e9"
+                strokeWidth={Math.max(2.5, cropW / 220)}
+              />
+            )}
+          </svg>
+        ) : (
+          <div className="h-48 w-full animate-pulse bg-muted" />
+        )}
+        <figcaption className="mt-2 text-[11px] text-sky-200">ناحیه برش‌خورده پالت (ورودی مدل کیفیت)</figcaption>
+      </figure>
+    </div>
+  </div>
 }
 
 function useFruitJobLive(jobId: string | null, job: FruitJob | undefined) {

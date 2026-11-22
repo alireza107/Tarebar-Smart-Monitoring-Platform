@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, ChevronDown, FileJson, FileSpreadsheet, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,15 @@ export function QualityResultView({ result, context }: { result: FruitQualityRes
   const countedTotal = result.counted_fruits_total ?? context.countedFruitsTotal ?? result.fruit_count_estimate
   const evaluatedCount = result.evaluated_fruits_count ?? (perFruit.length > 0 ? perFruit.length : null)
   const displayScore = result.freshness_score_mean ?? result.freshness_score
+  const tierGroups = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const item of perFruit) {
+      counts.set(item.freshness_score, (counts.get(item.freshness_score) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([score, count]) => ({ score, count }))
+      .sort((a, b) => b.score - a.score)
+  }, [perFruit])
   const hasDetails = result.detail_level === 'detailed' || scoredFrames.length > 0 || perFruit.length > 0
 
   return <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
@@ -64,9 +73,28 @@ export function QualityResultView({ result, context }: { result: FruitQualityRes
 
     <DistributionBar distribution={result.distribution} measured={isMeasured} />
 
-    {context.previewUrl && imageWidth && imageHeight && (palletPolygon?.length || perFruit.length > 0) && (
+    {tierGroups.length > 0 && (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-emerald-950">توزیع مقیاس‌شده کیفیت بر اساس تعداد میوه‌های شمارش‌شده ({fa(perFruit.length)} میوه)</h3>
+          <span className="text-xs text-emerald-800">میانگین وزنی: {fa(displayScore, 1)} از ۱۰۰</span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tierGroups.map(tier => (
+            <div key={tier.score} className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs shadow-sm">
+              <span className="text-base font-bold text-emerald-700">{fa(tier.count)} میوه</span>
+              <span className="text-muted-foreground">با امتیاز تازگی</span>
+              <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-bold text-emerald-900">{fa(tier.score)}٪</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {((context.previewUrl && imageWidth && imageHeight && (palletPolygon?.length || perFruit.length > 0)) || result.roi_crop_thumbnail) && (
       <QualityRoiOverlay
-        previewUrl={context.previewUrl}
+        previewUrl={context.previewUrl ?? null}
+        roiCropThumbnail={result.roi_crop_thumbnail ?? null}
         imageWidth={imageWidth}
         imageHeight={imageHeight}
         palletPolygon={palletPolygon}
@@ -156,6 +184,7 @@ function markerColor(score: number): { stroke: string; fill: string } {
 
 function QualityRoiOverlay({
   previewUrl,
+  roiCropThumbnail,
   imageWidth,
   imageHeight,
   palletPolygon,
@@ -163,20 +192,21 @@ function QualityRoiOverlay({
   selectedFruitId,
   onSelectFruit,
 }: {
-  previewUrl: string
-  imageWidth: number
-  imageHeight: number
+  previewUrl: string | null
+  roiCropThumbnail: string | null
+  imageWidth: number | null
+  imageHeight: number | null
   palletPolygon: number[][] | null
   perFruit: PerFruitQualityItem[]
   selectedFruitId: number | null
   onSelectFruit: (id: number | null) => void
 }) {
   const cornerLabels = ['TL', 'TR', 'BR', 'BL']
-  return <div className="space-y-2 rounded-xl border bg-muted/20 p-4">
+  return <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 className="text-sm font-semibold">ناحیه پالت انتخاب‌شده و نشانگر کیفیت هر میوه</h3>
-        <p className="text-xs text-muted-foreground">محدوده پالت از مرحله شمارش بازاستفاده شده است. روی هر میوه کلیک کنید تا جزئیات کیفیت و اندازه آن مشخص شود.</p>
+        <h3 className="text-sm font-semibold">ناحیه برش‌خورده پالت (ورودی مدل کیفیت) و نشانگر میوه‌ها</h3>
+        <p className="text-xs text-muted-foreground">مدل کیفیت روی ناحیه انتخاب‌شده از مرحله شمارش اجرا شده و امتیاز حاصل بین میوه‌های شمارش‌شده سرشکن شده است.</p>
       </div>
       <div className="flex items-center gap-3 text-xs">
         <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-full bg-emerald-500" />تازه (≥۷۵)</span>
@@ -184,58 +214,74 @@ function QualityRoiOverlay({
         <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-full bg-red-500" />فاسد (&lt;۴۵)</span>
       </div>
     </div>
-    <div className="flex justify-center">
-      <div className="relative inline-block max-w-full overflow-hidden rounded-lg border bg-black">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={previewUrl} alt="ناحیه پالت و کیفیت میوه‌ها" className="block h-auto max-h-[min(65vh,40rem)] max-w-full object-contain" />
-        <svg className="absolute inset-0 size-full" viewBox={`0 0 ${imageWidth} ${imageHeight}`} preserveAspectRatio="none">
-          {palletPolygon && palletPolygon.length >= 3 && <>
-            <polygon
-              points={palletPolygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
-              fill="rgba(14,165,233,0.10)"
-              stroke="#0ea5e9"
-              strokeWidth={Math.max(2.5, imageWidth / 380)}
-              strokeDasharray={`${Math.max(6, imageWidth / 120)} ${Math.max(4, imageWidth / 180)}`}
-            />
-            {palletPolygon.slice(0, 4).map((pt, idx) => <g key={idx}>
-              <circle cx={pt[0]} cy={pt[1]} r={Math.max(5, imageWidth / 150)} fill="#0ea5e9" stroke="white" strokeWidth={1.5} />
-              <text x={pt[0] + 8} y={pt[1] - 8} fill="#38bdf8" stroke="black" strokeWidth={0.7} fontSize={Math.max(13, imageWidth / 60)} paintOrder="stroke">{cornerLabels[idx]}</text>
-            </g>)}
-          </>}
-          {perFruit.map(fruit => {
-            const [x1, y1, x2, y2] = fruit.box
-            const tone = markerColor(fruit.freshness_score)
-            const isSelected = selectedFruitId === fruit.fruit_id
-            return <g
-              key={fruit.fruit_id}
-              className="cursor-pointer"
-              onClick={() => onSelectFruit(isSelected ? null : fruit.fruit_id)}
-            >
-              <rect
-                x={x1}
-                y={y1}
-                width={Math.max(2, x2 - x1)}
-                height={Math.max(2, y2 - y1)}
-                fill={tone.fill}
-                stroke={isSelected ? '#ffffff' : tone.stroke}
-                strokeWidth={isSelected ? Math.max(3.5, imageWidth / 250) : Math.max(2, imageWidth / 450)}
-                rx={3}
-              />
-              <text
-                x={x1 + 4}
-                y={Math.max(14, y1 - 4)}
-                fill="white"
-                stroke="black"
-                strokeWidth={0.9}
-                fontSize={Math.max(12, imageWidth / 65)}
-                paintOrder="stroke"
-              >
-                #{fruit.fruit_id} ({fruit.freshness_score})
-              </text>
-            </g>
-          })}
-        </svg>
-      </div>
+    <div className={`grid gap-4 ${previewUrl && roiCropThumbnail ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+      {roiCropThumbnail && (
+        <figure className="flex flex-col items-center justify-between overflow-hidden rounded-lg border bg-black p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={roiCropThumbnail} alt="ناحیه برش‌خورده پالت برای ارزیابی کیفیت" className="block h-auto max-h-[min(55vh,32rem)] max-w-full object-contain" />
+          <figcaption className="mt-2 w-full rounded bg-slate-900/90 px-3 py-1.5 text-center text-xs text-sky-200">
+            ناحیه برش‌خورده انتخابی از شمارش (ارسال‌شده به مدل کیفیت Qwen)
+          </figcaption>
+        </figure>
+      )}
+      {previewUrl && imageWidth && imageHeight && (
+        <figure className="flex flex-col items-center justify-between overflow-hidden rounded-lg border bg-black p-2">
+          <div className="relative inline-block max-w-full overflow-hidden rounded">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previewUrl} alt="ناحیه پالت و کیفیت میوه‌ها" className="block h-auto max-h-[min(55vh,32rem)] max-w-full object-contain" />
+            <svg className="absolute inset-0 size-full" viewBox={`0 0 ${imageWidth} ${imageHeight}`} preserveAspectRatio="none">
+              {palletPolygon && palletPolygon.length >= 3 && <>
+                <polygon
+                  points={palletPolygon.map(pt => `${pt[0]},${pt[1]}`).join(' ')}
+                  fill="rgba(14,165,233,0.10)"
+                  stroke="#0ea5e9"
+                  strokeWidth={Math.max(2.5, imageWidth / 380)}
+                  strokeDasharray={`${Math.max(6, imageWidth / 120)} ${Math.max(4, imageWidth / 180)}`}
+                />
+                {palletPolygon.slice(0, 4).map((pt, idx) => <g key={idx}>
+                  <circle cx={pt[0]} cy={pt[1]} r={Math.max(5, imageWidth / 150)} fill="#0ea5e9" stroke="white" strokeWidth={1.5} />
+                  <text x={pt[0] + 8} y={pt[1] - 8} fill="#38bdf8" stroke="black" strokeWidth={0.7} fontSize={Math.max(13, imageWidth / 60)} paintOrder="stroke">{cornerLabels[idx]}</text>
+                </g>)}
+              </>}
+              {perFruit.map(fruit => {
+                const [x1, y1, x2, y2] = fruit.box
+                const tone = markerColor(fruit.freshness_score)
+                const isSelected = selectedFruitId === fruit.fruit_id
+                return <g
+                  key={fruit.fruit_id}
+                  className="cursor-pointer"
+                  onClick={() => onSelectFruit(isSelected ? null : fruit.fruit_id)}
+                >
+                  <rect
+                    x={x1}
+                    y={y1}
+                    width={Math.max(2, x2 - x1)}
+                    height={Math.max(2, y2 - y1)}
+                    fill={tone.fill}
+                    stroke={isSelected ? '#ffffff' : tone.stroke}
+                    strokeWidth={isSelected ? Math.max(3.5, imageWidth / 250) : Math.max(2, imageWidth / 450)}
+                    rx={3}
+                  />
+                  <text
+                    x={x1 + 4}
+                    y={Math.max(14, y1 - 4)}
+                    fill="white"
+                    stroke="black"
+                    strokeWidth={0.9}
+                    fontSize={Math.max(12, imageWidth / 65)}
+                    paintOrder="stroke"
+                  >
+                    #{fruit.fruit_id} ({fruit.freshness_score})
+                  </text>
+                </g>
+              })}
+            </svg>
+          </div>
+          <figcaption className="mt-2 w-full rounded bg-slate-900/90 px-3 py-1.5 text-center text-xs text-emerald-200">
+            فریم کامل با مرز پالت انتخاب‌شده و امتیاز تخصیص‌یافته به هر میوه
+          </figcaption>
+        </figure>
+      )}
     </div>
   </div>
 }

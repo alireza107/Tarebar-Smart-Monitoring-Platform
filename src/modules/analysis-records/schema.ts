@@ -64,6 +64,8 @@ export const fruitQualityResultSchema = z.object({
   quality_mode: z.enum(['measured', 'estimated']).nullable().optional(),
   filter_outside_roi: z.boolean().nullable().optional(),
   pallet_polygon: z.array(z.array(z.number())).nullable().optional(),
+  roi_crop_box: z.array(z.number()).max(4).nullable().optional(),
+  roi_crop_thumbnail: thumbnail.nullable().optional(),
   image_width: z.number().int().positive().nullable().optional(),
   image_height: z.number().int().positive().nullable().optional(),
   counting_job_id: z.string().max(120).nullable().optional(),
