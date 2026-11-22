@@ -40,6 +40,7 @@ type FruitFrame = {
 type FruitResult = {
   processed_frame_count: number
   total_fruit_observations: number
+  measurement_mode?: 'calibrated' | 'estimated'
   average_fruit_size_mm: { width: number; length: number; equivalent_diameter: number } | null
   size_statistics?: SizeStatistics | null
   frames: FruitFrame[]
@@ -256,6 +257,7 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       min_pallet_overlap: Number(data.get('min_pallet_overlap')),
       resize_to_calibration: true,
       allow_unsafe_resize: input.allow_unsafe_resize,
+      estimate_from_masks: input.allow_unsafe_resize,
     })
   }
 
@@ -341,7 +343,7 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       </div>
       <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <input name="allow_unsafe_resize" type="checkbox" value="true" className="mt-0.5 size-4" />
-        <span className="font-semibold">تطبیق اندازه تصویر با کالیبراسیون</span>
+        <span><span className="font-semibold">تطبیق اندازه تصویر با کالیبراسیون</span><span className="mt-1 block text-xs font-normal">در صورت نبود کالیبراسیون دقیق، اندازه‌ها به‌صورت تخمینی و متناسب با ماسک هر میوه محاسبه می‌شوند.</span></span>
       </label>
       {(upload.error || prepareLive.error) && <p className="text-sm text-red-600">{(upload.error ?? prepareLive.error)?.message}</p>}
       <Button type="submit" disabled={!cameraId || upload.isPending || prepareLive.isPending}>{upload.isPending || prepareLive.isPending ? <Loader2 className="animate-spin" /> : mode === 'live' ? <Radio /> : <Upload />}{upload.isPending || prepareLive.isPending ? 'در حال آماده‌سازی فریم…' : mode === 'live' ? 'دریافت و نمایش فریم زنده' : 'بارگذاری و نمایش فریم'}</Button>
@@ -596,13 +598,14 @@ function ResultView({ result, jobId }: { result: FruitResult; jobId: string }) {
   }
   return <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">نتیجه تحلیل</h2></div>
+      <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">نتیجه تحلیل</h2>{result.measurement_mode === 'estimated' && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">اندازه‌های تخمینی</span>}</div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" onClick={() => void openServiceExport('zip')}><Download />بسته کامل (ZIP)</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => exportMeasurementCsv(result, jobId)}><FileSpreadsheet />اندازه هر میوه (CSV)</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => downloadJson(`fruit-measurement-${fileStamp()}.json`, { jobId, exportedAt: new Date().toISOString(), result })}><FileJson />JSON</Button>
       </div>
     </div>
+    {result.measurement_mode === 'estimated' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-900">این اندازه‌ها از نسبت مساحت و شکل ماسک‌های میوه و بازه متعارف میوه‌های گرد تخمین زده شده‌اند و اندازه‌گیری فیزیکی کالیبره‌شده نیستند.</p>}
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Metric label="تعداد میوه" value={result.total_fruit_observations.toLocaleString('fa-IR')} />
       <Metric label="میانگین عرض" value={average ? `${average.width.toFixed(1)} mm` : '—'} />
