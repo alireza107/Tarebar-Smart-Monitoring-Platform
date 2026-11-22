@@ -16,11 +16,15 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 
 const requestSchema = z.object({
-  numFrames: z.number().int().min(2).max(16).default(8),
+  numFrames: z.number().int().min(1).max(16).default(8),
   intervalSeconds: z.number().min(10).max(60).default(10),
   detailLevel: z.enum(['summary', 'detailed']).default('summary'),
   perFrame: z.boolean().default(false),
   includeThumbnails: z.boolean().default(false),
+  countingResult: z.record(z.string(), z.unknown()).nullable().optional(),
+  filterOutsideRoi: z.boolean().default(false),
+  evaluatePerFruit: z.boolean().default(true),
+  releaseGpuAfter: z.boolean().default(false),
 })
 
 type Params = { params: Promise<{ id: string }> }
@@ -52,6 +56,10 @@ export async function POST(req: NextRequest, { params }: Params) {
         detail_level: parsed.data.detailLevel,
         per_frame: parsed.data.perFrame,
         include_thumbnails: parsed.data.includeThumbnails,
+        counting_result: parsed.data.countingResult ?? null,
+        filter_outside_roi: parsed.data.filterOutsideRoi,
+        evaluate_per_fruit: parsed.data.evaluatePerFruit,
+        release_gpu_after: parsed.data.releaseGpuAfter,
       }),
       cache: 'no-store',
     })

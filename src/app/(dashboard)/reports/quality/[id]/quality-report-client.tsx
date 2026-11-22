@@ -61,9 +61,9 @@ export function QualityReportClient({ id }: { id: string }) {
       <ReportSection title="نتیجه کلی">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4">
           <ReportStat label="برچسب کیفیت" value={data.label} hint={grade ? GRADE_LABELS_FA[grade] : undefined} tone={data.hasFruit ? tone(data.freshnessScore) : 'neutral'} />
-          <ReportStat label="امتیاز تازگی" value={`${faNumber(data.freshnessScore)} از ۱۰۰`} tone={data.hasFruit ? tone(data.freshnessScore) : 'neutral'} />
+          <ReportStat label={details.qualityMode === 'measured' ? 'میانگین امتیاز (اندازه‌گیری‌شده)' : 'امتیاز تازگی (تخمینی)'} value={`${faNumber(data.freshnessScore)} از ۱۰۰`} tone={data.hasFruit ? tone(data.freshnessScore) : 'neutral'} />
+          <ReportStat label="تعداد میوه شمارش‌شده" value={details.countedFruitsTotal != null ? faNumber(details.countedFruitsTotal) : (data.fruitCountEstimate != null ? faNumber(data.fruitCountEstimate) : '—')} />
           <ReportStat label="اطمینان مدل" value={`${faNumber(data.confidence)}٪`} />
-          <ReportStat label="فریم‌های بررسی‌شده" value={faNumber(data.frameCount)} />
         </div>
         <div className="space-y-1.5">
           <div className="flex h-4 overflow-hidden rounded-full bg-slate-100"><div className="bg-emerald-500" style={{ width: `${data.freshPercent}%` }} /><div className="bg-amber-400" style={{ width: `${data.middlePercent}%` }} /><div className="bg-red-500" style={{ width: `${data.rottenPercent}%` }} /></div>
@@ -71,6 +71,21 @@ export function QualityReportClient({ id }: { id: string }) {
         </div>
         {details.verdictFa && <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-7">{details.verdictFa}</p>}
       </ReportSection>
+
+      {!!details.perFruitQuality?.length && <ReportSection title="کیفیت و اندازه تک‌به‌تک میوه‌ها" description={`نوع ارزیابی: ${details.qualityMode === 'measured' ? 'اندازه‌گیری‌شده روی برش هر میوه' : 'تخمینی بر پایه امتیاز فریم'}`}>
+        <table className="w-full text-xs">
+          <thead><tr className="border-b border-slate-200 text-right text-slate-500"><th className="p-2">شناسه</th><th className="p-2">امتیاز</th><th className="p-2">وضعیت</th><th className="p-2">درجه</th><th className="p-2">نوع مقدار</th><th className="p-2">اندازه (mm)</th><th className="p-2">توضیح</th></tr></thead>
+          <tbody>{details.perFruitQuality.map(item => <tr key={item.fruit_id} className="border-b border-slate-100 last:border-0">
+            <td className="p-2 font-semibold">#{item.fruit_id}</td>
+            <td className="p-2 font-bold">{faNumber(item.freshness_score)}</td>
+            <td className="p-2">{item.label}</td>
+            <td className="p-2">{item.grade ? GRADE_LABELS_FA[item.grade] : '—'}</td>
+            <td className="p-2">{item.measurement_mode === 'measured' ? 'اندازه‌گیری‌شده' : 'تخمینی'}</td>
+            <td className="p-2" dir="ltr">{item.size ? `${item.size.width_mm.toFixed(1)}×${item.size.length_mm.toFixed(1)} (⌀${item.size.equivalent_diameter_mm.toFixed(1)})` : '—'}</td>
+            <td className="p-2">{item.note_fa ?? '—'}</td>
+          </tr>)}</tbody>
+        </table>
+      </ReportSection>}
 
       {!!details.qualityProfile?.length && <ReportSection title="پروفایل کیفیت" description="وضعیت بار در شاخص‌های قابل مشاهده؛ برآمده از نتیجه اعتبارسنجی‌شده">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3">

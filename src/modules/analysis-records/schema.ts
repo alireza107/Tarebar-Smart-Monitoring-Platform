@@ -20,13 +20,40 @@ const qualityFrameSchema = z.object({
   error: z.string().max(300).nullable().optional(),
 })
 
+const perFruitQualityItemSchema = z.object({
+  fruit_id: z.number().int(),
+  box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  mask_polygon: z.array(z.array(z.number())).nullable().optional(),
+  inside_pallet: z.boolean().optional(),
+  pallet_overlap: z.number().nullable().optional(),
+  freshness_score: percent,
+  label: z.string().max(40),
+  grade: z.enum(['A', 'B', 'C', 'D']).nullable().optional(),
+  confidence: percent.nullable().optional(),
+  note_fa: z.string().max(500).nullable().optional(),
+  measurement_mode: z.enum(['measured', 'estimated']),
+  size: z
+    .object({
+      width_mm: z.number(),
+      length_mm: z.number(),
+      equivalent_diameter_mm: z.number(),
+      area_mm2: z.number(),
+    })
+    .passthrough()
+    .nullable()
+    .optional(),
+})
+
 /** Validates the analytics-service response before anything is stored. */
 export const fruitQualityResultSchema = z.object({
   has_fruit: z.boolean(),
   label: z.enum(FRUIT_QUALITY_LABELS),
   freshness_score: percent,
+  freshness_score_mean: z.number().min(0).max(100).nullable().optional(),
   distribution: z.object({ fresh: percent, middle: percent, rotten: percent }),
   fruit_count_estimate: z.number().int().nonnegative().nullable(),
+  counted_fruits_total: z.number().int().nonnegative().nullable().optional(),
+  evaluated_fruits_count: z.number().int().nonnegative().nullable().optional(),
   confidence: percent,
   summary_fa: z.string().min(1).max(2000),
   verdict_fa: z.string().max(2000).nullable().optional(),
@@ -34,6 +61,13 @@ export const fruitQualityResultSchema = z.object({
   inference_seconds: z.number().nonnegative(),
   analysis_version: z.number().int().optional(),
   detail_level: z.enum(['summary', 'detailed']).optional(),
+  quality_mode: z.enum(['measured', 'estimated']).nullable().optional(),
+  filter_outside_roi: z.boolean().nullable().optional(),
+  pallet_polygon: z.array(z.array(z.number())).nullable().optional(),
+  image_width: z.number().int().positive().nullable().optional(),
+  image_height: z.number().int().positive().nullable().optional(),
+  counting_job_id: z.string().max(120).nullable().optional(),
+  per_fruit_quality: z.array(perFruitQualityItemSchema).max(500).optional(),
   model: z.string().max(200).nullable().optional(),
   grade: z.enum(['A', 'B', 'C', 'D']).nullable().optional(),
   fruit_types: z

@@ -87,6 +87,26 @@ export interface FrameStatistics {
   score_stddev: number | null
 }
 
+export interface PerFruitQualityItem {
+  fruit_id: number
+  box: [number, number, number, number]
+  mask_polygon?: number[][] | null
+  inside_pallet?: boolean
+  pallet_overlap?: number | null
+  freshness_score: number
+  label: FruitQualityLabel | string
+  grade?: QualityGrade | null
+  confidence?: number | null
+  note_fa?: string | null
+  measurement_mode: 'measured' | 'estimated'
+  size?: {
+    width_mm: number
+    length_mm: number
+    equivalent_diameter_mm: number
+    area_mm2: number
+  } | null
+}
+
 /** Response of `POST /api/v1/fruit-quality[/from-stream]`. Fields after
  *  `inference_seconds` exist from analysis version 2 and are optional so the UI
  *  keeps working against an older analytics image. */
@@ -94,8 +114,11 @@ export interface FruitQualityResult {
   has_fruit: boolean
   label: FruitQualityLabel
   freshness_score: number
+  freshness_score_mean?: number | null
   distribution: { fresh: number; middle: number; rotten: number }
   fruit_count_estimate: number | null
+  counted_fruits_total?: number | null
+  evaluated_fruits_count?: number | null
   confidence: number
   summary_fa: string
   /** Verdict in words, composed by the analytics service from the validated numbers. */
@@ -104,6 +127,13 @@ export interface FruitQualityResult {
   inference_seconds: number
   analysis_version?: number
   detail_level?: 'summary' | 'detailed'
+  quality_mode?: 'measured' | 'estimated' | null
+  filter_outside_roi?: boolean | null
+  pallet_polygon?: number[][] | null
+  image_width?: number | null
+  image_height?: number | null
+  counting_job_id?: string | null
+  per_fruit_quality?: PerFruitQualityItem[]
   model?: string | null
   grade?: QualityGrade | null
   fruit_types?: FruitTypeShare[]
@@ -145,6 +175,15 @@ export const GRADE_LABELS_FA: Record<QualityGrade, string> = {
 export interface QualityDetails {
   analysisVersion: number | null
   verdictFa?: string | null
+  qualityMode?: 'measured' | 'estimated' | null
+  countedFruitsTotal?: number | null
+  evaluatedFruitsCount?: number | null
+  filterOutsideRoi?: boolean | null
+  palletPolygon?: number[][] | null
+  imageWidth?: number | null
+  imageHeight?: number | null
+  countingJobId?: string | null
+  perFruitQuality?: PerFruitQualityItem[]
   fruitTypes: FruitTypeShare[]
   defects: FruitDefect[]
   shelfLifeDaysEstimate: number | null

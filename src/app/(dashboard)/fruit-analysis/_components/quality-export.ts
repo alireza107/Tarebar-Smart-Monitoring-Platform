@@ -12,6 +12,11 @@ export interface QualityExportContext {
   sourceLabel: string
   recordId: string | null
   analyzedAt: Date
+  previewUrl?: string | null
+  palletPolygon?: number[][] | null
+  imageWidth?: number | null
+  imageHeight?: number | null
+  countedFruitsTotal?: number | null
 }
 
 export function qualityGrade(result: FruitQualityResult) {
@@ -42,7 +47,10 @@ export function exportQualityCsv(result: FruitQualityResult, context: QualityExp
     ['میوه دیده شد', result.has_fruit ? 'بله' : 'خیر'],
     ['برچسب کیفیت', result.label],
     ['درجه', grade ? `${grade} (${GRADE_LABELS_FA[grade]})` : ''],
-    ['امتیاز تازگی (۰ تا ۱۰۰)', result.freshness_score],
+    ['نوع ارزیابی', result.quality_mode === 'measured' ? 'اندازه‌گیری‌شده (تک‌میوه)' : 'تخمینی (کلی فریم)'],
+    ['تعداد کل میوه‌های شمارش‌شده', result.counted_fruits_total ?? result.fruit_count_estimate ?? ''],
+    ['میوه‌های ارزیابی‌شده در ناحیه', result.evaluated_fruits_count ?? ''],
+    ['امتیاز تازگی (۰ تا ۱۰۰)', result.freshness_score_mean ?? result.freshness_score],
     ['اطمینان مدل (٪)', result.confidence],
     ['محصول تازه', shareBandFa(result.distribution.fresh)],
     ['نشانه‌های کهنگی', shareBandFa(result.distribution.middle)],
@@ -61,6 +69,21 @@ export function exportQualityCsv(result: FruitQualityResult, context: QualityExp
     rows.push([], ['عیب', 'شدت', 'گستردگی'])
     for (const defect of result.defects) {
       rows.push([defect.label_fa, SEVERITY_LABELS_FA[defect.severity], defect.extent_label_fa ?? ''])
+    }
+  }
+  if (result.per_fruit_quality?.length) {
+    rows.push([], ['شناسه میوه', 'امتیاز تازگی', 'برچسب', 'درجه', 'نوع مقدار', 'داخل پالت', 'قطر معادل (mm)', 'یادداشت'])
+    for (const item of result.per_fruit_quality) {
+      rows.push([
+        item.fruit_id,
+        item.freshness_score,
+        item.label,
+        item.grade ?? '',
+        item.measurement_mode === 'measured' ? 'اندازه‌گیری‌شده' : 'تخمینی',
+        item.inside_pallet === false ? 'خارج از ناحیه' : 'داخل ناحیه',
+        item.size?.equivalent_diameter_mm ?? '',
+        item.note_fa ?? '',
+      ])
     }
   }
   const frames = (result.frames ?? []).filter(frame => frame.freshness_score !== null || frame.error)

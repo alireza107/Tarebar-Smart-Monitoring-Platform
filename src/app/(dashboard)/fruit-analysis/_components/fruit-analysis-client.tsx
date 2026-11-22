@@ -31,13 +31,30 @@ type InputPreview = { id: string; filename: string; camera_id: string; width: nu
 type Point = { x: number; y: number }
 type FruitSize = { width_mm: number; length_mm: number; equivalent_diameter_mm: number; area_mm2: number }
 type FruitFrame = {
+  frame_id?: string
   frame_index: number | null
   timestamp_ms: number | null
+  image_width?: number
+  image_height?: number
   num_fruits: number
-  fruits: Array<{ fruit_id: number; box: [number, number, number, number]; size: FruitSize | null }>
+  pallet_polygon?: number[][]
+  fruits: Array<{
+    fruit_id: number
+    box: [number, number, number, number]
+    mask_polygon?: number[][]
+    mask_area?: number
+    inside_pallet?: boolean
+    pallet_overlap?: number | null
+    size: FruitSize | null
+  }>
   measurement_overlay_url?: string
+  frame_image_url?: string
+  frame_result_url?: string
 }
 type FruitResult = {
+  contract_version?: number
+  job_id?: string
+  pallet_polygon?: number[][]
   processed_frame_count: number
   total_fruit_observations: number
   measurement_mode?: 'calibrated' | 'estimated'
@@ -71,7 +88,17 @@ type SizeStatistics = {
   diameter_mm?: Record<string, number | null>
   histogram?: Array<{ from_mm: number; to_mm: number; count: number }>
 }
-type QualityReport = { result: FruitQualityResult; recordId: string | null; sourceLabel: string; analyzedAt: Date }
+type QualityReport = {
+  result: FruitQualityResult
+  recordId: string | null
+  sourceLabel: string
+  analyzedAt: Date
+  previewUrl?: string | null
+  palletPolygon?: number[][] | null
+  imageWidth?: number | null
+  imageHeight?: number | null
+  countedFruitsTotal?: number | null
+}
 
 async function appJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
@@ -103,7 +130,13 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
   const [detailedQuality, setDetailedQuality] = useState(true)
   const [perFrameQuality, setPerFrameQuality] = useState(false)
   const [qualityLocation, setQualityLocation] = useState('')
+  const [useCountingForQuality, setUseCountingForQuality] = useState(true)
+  const [evaluatePerFruit, setEvaluatePerFruit] = useState(true)
+  const [filterOutsideRoi, setFilterOutsideRoi] = useState(false)
+  const [autoRunQualityAfterCounting, setAutoRunQualityAfterCounting] = useState(false)
+  const [sequentialStepMessage, setSequentialStepMessage] = useState<string | null>(null)
   const recordedRuns = useRef(new Set<string>())
+  const autoTriggeredQualityJobs = useRef(new Set<string>())
 
   const cameras = useQuery<{ data: Camera[] }>({ queryKey: ['cameras'], queryFn: () => appJson('/api/cameras') })
   const calibrations = useQuery<{ data: Calibration[] }>({ queryKey: ['camera-calibrations'], queryFn: () => appJson('/api/camera-calibrations') })
@@ -168,33 +201,117 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
     onSuccess: response => queryClient.setQueryData(['fruit-job', jobId], response),
   })
   const quality = useMutation({
-    mutationFn: async (): Promise<QualityReport> => {
+    mutationFn: async (overrideCounting?: { result: FruitResult; jobId: string }): Promise<QualityReport> => {
       const analyzedAt = new Date()
+      const activeCounting = overrideCounting ?? (useCountingForQuality ? measurementReport : null)
+      const countingFrame = activeCounting?.result.frames[0]
+      const countingPolygon =
+        countingFrame?.pallet_polygon ??
+        activeCounting?.result.pallet_polygon ??
+        (points.length === 4 ? points.map(p => [p.x, p.y]) : null)
+      const countingWidth = countingFrame?.image_width ?? input?.width ?? null
+      const countingHeight = countingFrame?.image_height ?? input?.height ?? null
+
+      // Step 2 of sequential GPU plan: ensure fruit-pipeline releases SAM GPU memory before Qwen loads.
+      if (activeCounting) {
+        setSequentialStepMessage('در حال آزادسازی حافظه GPU سرویس شمارش (SAM)…')
+        await fruitApiJson('/api/v1/gpu/release', { method: 'POST' }).catch(() => null)
+      }
+
       if (mode === 'recorded') {
-        if (!qualityFile) throw new Error('ابتدا یک تصویر یا ویدیوی میوه انتخاب کنید')
+        let mediaToUpload: File | null = qualityFile
+        let previewForOverlay: string | null = qualityPreviewUrl
+
+        if (activeCounting) {
+          const frameImageUrl =
+            countingFrame?.frame_image_url ??
+            (input ? input.preview_url : null)
+          if (frameImageUrl) {
+            setSequentialStepMessage('در حال بارگذاری تصویر و JSON شمارش برای ارزیابی کیفیت تک‌به‌تک…')
+            const tokenizedUrl = await withServiceToken(fruitArtifactUrl(frameImageUrl))
+            previewForOverlay = tokenizedUrl
+            if (!mediaToUpload) {
+              const imgResp = await fetch(tokenizedUrl)
+              if (imgResp.ok) {
+                const blob = await imgResp.blob()
+                mediaToUpload = new File([blob], `counting-${activeCounting.jobId}.png`, { type: blob.type || 'image/png' })
+              }
+            }
+          }
+        }
+
+        if (!mediaToUpload) throw new Error('ابتدا یک تصویر یا ویدیوی میوه انتخاب کنید یا شمارش را اجرا نمایید')
+        setSequentialStepMessage(
+          activeCounting && evaluatePerFruit
+            ? 'در حال ارزیابی کیفیت هر میوه داخل محدوده پالت با Qwen…'
+            : 'در حال ارزیابی کیفیت با Qwen…',
+        )
         const data = new FormData()
-        data.set('media', qualityFile)
+        data.set('media', mediaToUpload)
         data.set('num_frames', '8')
         data.set('detail_level', detailedQuality ? 'detailed' : 'summary')
         data.set('per_frame', String(perFrameQuality))
         data.set('include_thumbnails', 'true')
+        if (activeCounting) {
+          data.set('counting_result', JSON.stringify({ ...activeCounting.result, job_id: activeCounting.jobId }))
+          data.set('filter_outside_roi', String(filterOutsideRoi))
+          data.set('evaluate_per_fruit', String(evaluatePerFruit))
+        }
         const response = await videoAnalyticsApiJson<{ data: FruitQualityResult }>('/api/v1/fruit-quality', { method: 'POST', body: data })
+        setSequentialStepMessage(null)
         // Keep the assessment: it feeds the exports and the location's executive report.
         const [locationType, locationId] = qualityLocation ? qualityLocation.split(':') : []
         const stored = await appJson<{ data: { id: string } }>('/api/fruit-quality-assessments', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ result: response.data, fileName: qualityFile.name, ...(locationType ? { locationType, locationId } : {}) }),
+          body: JSON.stringify({ result: response.data, fileName: mediaToUpload.name, ...(locationType ? { locationType, locationId } : {}) }),
         }).catch(() => null)
-        return { result: response.data, recordId: stored?.data.id ?? null, sourceLabel: `فایل: ${qualityFile.name}`, analyzedAt }
+        return {
+          result: response.data,
+          recordId: stored?.data.id ?? null,
+          sourceLabel: activeCounting ? `شمارش #${activeCounting.jobId.slice(0, 8)} (${mediaToUpload.name})` : `فایل: ${mediaToUpload.name}`,
+          analyzedAt,
+          previewUrl: previewForOverlay,
+          palletPolygon: response.data.pallet_polygon ?? countingPolygon,
+          imageWidth: response.data.image_width ?? countingWidth,
+          imageHeight: response.data.image_height ?? countingHeight,
+          countedFruitsTotal: response.data.counted_fruits_total ?? activeCounting?.result.total_fruit_observations ?? null,
+        }
       }
       if (!qualityCameraId) throw new Error('ابتدا یک دوربین زنده انتخاب کنید')
+      setSequentialStepMessage('در حال ارزیابی کیفیت استریم زنده با Qwen…')
       const response = await appJson<{ data: FruitQualityResult; recordId: string | null }>(`/api/cameras/${qualityCameraId}/fruit-quality`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ numFrames: 8, intervalSeconds: 10, detailLevel: detailedQuality ? 'detailed' : 'summary', perFrame: perFrameQuality, includeThumbnails: true }),
+        body: JSON.stringify({
+          numFrames: 8,
+          intervalSeconds: 10,
+          detailLevel: detailedQuality ? 'detailed' : 'summary',
+          perFrame: perFrameQuality,
+          includeThumbnails: true,
+          countingResult: activeCounting ? { ...activeCounting.result, job_id: activeCounting.jobId } : null,
+          filterOutsideRoi,
+          evaluatePerFruit,
+        }),
       })
+      setSequentialStepMessage(null)
       const cameraName = liveCameras.find(camera => camera.id === qualityCameraId)?.name ?? ''
-      return { result: response.data, recordId: response.recordId ?? null, sourceLabel: `دوربین زنده: ${cameraName}`, analyzedAt }
+      let livePreviewUrl: string | null = null
+      if (activeCounting) {
+        const frameImageUrl = countingFrame?.frame_image_url ?? (input ? input.preview_url : null)
+        if (frameImageUrl) livePreviewUrl = await withServiceToken(fruitArtifactUrl(frameImageUrl))
+      }
+      return {
+        result: response.data,
+        recordId: response.recordId ?? null,
+        sourceLabel: `دوربین زنده: ${cameraName}`,
+        analyzedAt,
+        previewUrl: livePreviewUrl,
+        palletPolygon: response.data.pallet_polygon ?? countingPolygon,
+        imageWidth: response.data.image_width ?? countingWidth,
+        imageHeight: response.data.image_height ?? countingHeight,
+        countedFruitsTotal: response.data.counted_fruits_total ?? activeCounting?.result.total_fruit_observations ?? null,
+      }
     },
+    onSettled: () => setSequentialStepMessage(null),
     onSuccess: report => {
       setQualityReport(report)
       queryClient.invalidateQueries({ queryKey: ['fruit-quality-history'] })
@@ -269,6 +386,11 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
   useEffect(() => {
     if (!result || !jobId) return
     setMeasurementReport({ result, jobId })
+    if (autoRunQualityAfterCounting && !autoTriggeredQualityJobs.current.has(jobId)) {
+      autoTriggeredQualityJobs.current.add(jobId)
+      setUseCountingForQuality(true)
+      quality.mutate({ result, jobId })
+    }
     // Store the run summary once per job so it counts in the location's reports.
     if (recordedRuns.current.has(jobId)) return
     recordedRuns.current.add(jobId)
@@ -320,10 +442,17 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
       <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={detailedQuality} onChange={event => setDetailedQuality(event.target.checked)} className="mt-1 size-4" /><span><span className="font-medium">تحلیل تفصیلی</span><span className="mt-0.5 block text-xs text-muted-foreground">عیوب، شاخص‌های آسیب و سطح، و بررسی فریم‌به‌فریم را هم گزارش می‌کند.</span></span></label>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={perFrameQuality} onChange={event => setPerFrameQuality(event.target.checked)} className="mt-1 size-4" /><span><span className="font-medium">امتیاز فریم‌به‌فریم</span><span className="mt-0.5 block text-xs text-muted-foreground">هر فریم جداگانه ارزیابی می‌شود؛ دقیق‌تر ولی چند برابر کندتر است.</span></span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={useCountingForQuality} onChange={event => setUseCountingForQuality(event.target.checked)} disabled={!measurementReport} className="mt-1 size-4" /><span><span className="font-medium">بازاستفاده از نتیجه شمارش و محدوده پالت</span><span className="mt-0.5 block text-xs text-muted-foreground">{measurementReport ? `شمارش آماده است (${measurementReport.result.total_fruit_observations.toLocaleString('fa-IR')} میوه)؛ کیفیت روی برش هر میوه اجرا و با شناسه میوه ادغام می‌شود.` : 'ابتدا یک بار شمارش و انتخاب پالت را اجرا کنید تا برش میوه‌ها و محدوده پالت بازاستفاده شود.'}</span></span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={evaluatePerFruit} onChange={event => setEvaluatePerFruit(event.target.checked)} disabled={!measurementReport || !useCountingForQuality} className="mt-1 size-4" /><span><span className="font-medium">ارزیابی واقعی تک‌به‌تک میوه‌ها (Measured)</span><span className="mt-0.5 block text-xs text-muted-foreground">در صورت غیرفعال بودن، امتیاز از کل فریم گرفته شده و با برچسب «تخمینی» نمایش داده می‌شود.</span></span></label>
+        <label className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={filterOutsideRoi} onChange={event => setFilterOutsideRoi(event.target.checked)} disabled={!measurementReport || !useCountingForQuality} className="mt-1 size-4" /><span><span className="font-medium">حذف میوه‌های خارج از محدوده پالت (فیلتر ROI)</span><span className="mt-0.5 block text-xs text-muted-foreground">در حالت پیش‌فرض محدوده پالت به‌عنوان مرز بصری رسم می‌شود؛ با فعال‌سازی این گزینه فقط میوه‌های داخل چندضلعی پالت ارزیابی می‌شوند.</span></span></label>
         {mode === 'recorded' && <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="fruit-quality-location">ثبت در گزارشِ (اختیاری)</Label><select id="fruit-quality-location" value={qualityLocation} onChange={event => setQualityLocation(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">بدون مکان — فقط در سوابق من</option>{(locations.data?.markets ?? []).map(item => <option key={`market:${item.id}`} value={`market:${item.id}`}>بازار {item.name}{item.parentName ? ` · ${item.parentName}` : ''}</option>)}{(locations.data?.booths ?? []).map(item => <option key={`booth:${item.id}`} value={`booth:${item.id}`}>{item.name}{item.parentName ? ` · ${item.parentName}` : ''}</option>)}</select><p className="text-xs text-muted-foreground">با انتخاب بازار یا غرفه، این ارزیابی در گزارش مدیریتی همان مکان محاسبه می‌شود.</p></div>}
       </div>
+      {sequentialStepMessage && <p className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900"><Loader2 className="size-4 animate-spin" />{sequentialStepMessage}</p>}
       {quality.error && <p className="text-sm text-red-600">{quality.error.message}</p>}
-      <Button type="button" disabled={quality.isPending || (mode === 'recorded' ? !qualityFile : !qualityCameraId)} onClick={() => quality.mutate()}>{quality.isPending ? <Loader2 className="animate-spin" /> : <BrainCircuit />}{quality.isPending ? 'در حال ارزیابی با Qwen…' : 'اجرای ارزیابی کیفیت'}</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={quality.isPending || (mode === 'recorded' ? (!qualityFile && !(useCountingForQuality && measurementReport)) : !qualityCameraId)} onClick={() => quality.mutate(undefined)}>{quality.isPending ? <Loader2 className="animate-spin" /> : <BrainCircuit />}{quality.isPending ? 'در حال ارزیابی با Qwen…' : (useCountingForQuality && measurementReport ? 'ارزیابی کیفیت بر اساس نتیجه شمارش' : 'اجرای ارزیابی کیفیت')}</Button>
+        {!measurementReport && <Button type="button" variant="outline" onClick={() => { setAutoRunQualityAfterCounting(true); setAnalysisKind('measurement') }}><Ruler />ابتدا شمارش و انتخاب محدوده پالت (سپس کیفیت خودکار)</Button>}
+      </div>
     </section>}
 
     {analysisKind === 'measurement' && <>
@@ -380,6 +509,13 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
         </div>}
       </div>
       {(start.error || job.error || cancel.error) && <p className="text-sm text-red-600">{(start.error ?? job.error ?? cancel.error)?.message}</p>}
+      <label className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
+        <input type="checkbox" checked={autoRunQualityAfterCounting} onChange={event => setAutoRunQualityAfterCounting(event.target.checked)} className="mt-1 size-4" />
+        <span>
+          <span className="font-medium">اجرای ترتیبی خودکار: شمارش ← آزادسازی حافظه GPU ← ارزیابی کیفیت تک‌میوه با Qwen</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">بلافاصله پس از پایان شمارش و ذخیره JSON، مدل شمارش از GPU آزاد شده و سرویس کیفیت روی برش میوه‌های داخل پالت اجرا می‌شود.</span>
+        </span>
+      </label>
       {currentJob && currentJob.status !== 'completed' && <div className={`rounded-lg border p-3 text-sm ${currentJob.status === 'failed' ? 'border-red-200 bg-red-50 text-red-700' : currentJob.status === 'cancelled' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>{currentJob.status === 'failed' ? currentJob.error : currentJob.status === 'cancelled' ? <span className="flex items-center gap-2"><Ban className="size-4" />پردازش متوقف شد.</span> : <span className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />{currentJob.status === 'cancelling' ? 'در حال توقف پردازش…' : legacyDashboard ? 'مدل در حال تشخیص، قطعه‌بندی و اندازه‌گیری میوه‌هاست…' : 'تحلیل دوره‌ای فعال است؛ آخرین ماسک تا اجرای بعدی SAM نمایش داده می‌شود.'}</span>}</div>}
       {currentJob && jobIsActive && live && <LivePreviewPanel jobId={currentJob.id} live={live} connected={connected} intervalMode={!legacyDashboard} />}
       <div className="flex flex-wrap gap-2">
@@ -391,7 +527,16 @@ export function FruitAnalysisClient({ mode = 'recorded', legacyDashboard = false
 
     {qualityReport && <QualityResultView result={qualityReport.result} context={qualityReport} />}
     {analysisKind === 'quality' && <QualityHistory cameraId={mode === 'live' ? qualityCameraId || undefined : undefined} />}
-    {measurementReport && <ResultView result={measurementReport.result} jobId={measurementReport.jobId} />}
+    {measurementReport && <ResultView
+      result={measurementReport.result}
+      jobId={measurementReport.jobId}
+      isQualityRunning={quality.isPending}
+      onRunSequentialQuality={() => {
+        setUseCountingForQuality(true)
+        setAnalysisKind('quality')
+        quality.mutate(measurementReport)
+      }}
+    />}
   </div>
 }
 
@@ -587,7 +732,17 @@ function exportMeasurementCsv(result: FruitResult, jobId: string) {
   )
 }
 
-function ResultView({ result, jobId }: { result: FruitResult; jobId: string }) {
+function ResultView({
+  result,
+  jobId,
+  isQualityRunning,
+  onRunSequentialQuality,
+}: {
+  result: FruitResult
+  jobId: string
+  isQualityRunning?: boolean
+  onRunSequentialQuality?: () => void
+}) {
   const average = result.average_fruit_size_mm
   const statistics = result.size_statistics
   const histogram = statistics?.histogram ?? []
@@ -600,6 +755,7 @@ function ResultView({ result, jobId }: { result: FruitResult; jobId: string }) {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2"><CheckCircle2 className="size-5 text-emerald-600" /><h2 className="font-semibold">نتیجه تحلیل</h2>{result.measurement_mode === 'estimated' && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">اندازه‌های تخمینی</span>}</div>
       <div className="flex flex-wrap gap-2">
+        {onRunSequentialQuality && <Button type="button" size="sm" variant="default" disabled={isQualityRunning} onClick={onRunSequentialQuality}>{isQualityRunning ? <Loader2 className="animate-spin" /> : <BrainCircuit />}ارزیابی کیفیت تک‌میوه با همین شمارش و پالت</Button>}
         <Button type="button" size="sm" onClick={() => void openServiceExport('zip')}><Download />بسته کامل (ZIP)</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => exportMeasurementCsv(result, jobId)}><FileSpreadsheet />اندازه هر میوه (CSV)</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => downloadJson(`fruit-measurement-${fileStamp()}.json`, { jobId, exportedAt: new Date().toISOString(), result })}><FileJson />JSON</Button>
